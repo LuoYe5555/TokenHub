@@ -1,0 +1,44 @@
+{
+  "host": "127.0.0.1",
+  "port": 18687,
+  "apiKey": "sk-th-testkey000000000000000000",
+  "openBrowser": false,
+  "defaultProvider": "workbuddy",
+  "modelRoutes": {},
+  "providers": {
+    "trae": {
+      "enabled": true,
+      "defaultModel": "glm-5.2",
+      "apiBase": "http://127.0.0.1:19002",
+      "billingBase": "http://127.0.0.1:19002",
+      "agentBase": "http://127.0.0.1:19002"
+    },
+    "workbuddy": {
+      "enabled": true,
+      "defaultModel": "deepseek-v4-pro",
+      "apiBase": "http://127.0.0.1:19001",
+      "billingBase": "http://127.0.0.1:19001"
+    },
+    "zcode": {
+      "enabled": true,
+      "defaultModel": "glm-5.3",
+      "apiBase": "http://127.0.0.1:19003",
+      "billingBase": "http://127.0.0.1:19003"
+    }
+  },
+  "autoCheckin": true,
+  "checkinHours": [
+    9,
+    21
+  ],
+  "wbIntlKeepalive": false,
+  "zcodeAutoClaim": true,
+  "zcodeClaimIntervalMin": 30,
+  "zcodeInjectShape": "overwrite",
+  "quotaRefreshMin": 30,
+  "refreshSkewMin": 1440,
+  "maxRotate": 6,
+  "upstreamTimeoutSec": 600,
+  "connectTimeoutSec": 15,
+  "exposePrefixModels": true
+}

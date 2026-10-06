@@ -1,0 +1,9 @@
+# 运行数据：含账号凭据 / API Key / 分享钥匙 / 用量日志，严禁提交
+data/
+
+# 本地杂物
+*.log
+*.bak
+TokenHub.new.exe
+.playwright-cli/
+.workbuddy/

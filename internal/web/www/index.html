@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN" data-page-node-id="hlAgSrwNEj82lmhNySrsKF">
+<head data-page-node-id="BtWHu91L4yvcnnCegFHRa7">
+<meta charset="utf-8" data-page-node-id="OnGTNiBmlIgc9HQi8O5Juw">
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="bjoe8W0rhX2Bchc99ywSUE">
+<title>TokenHub</title>
+<link rel="icon" href="/favicon.svg" data-page-node-id="rOiE0OuzBrjchH2G3Mtsdc">
+<style>
+:root{
+  --bg:#0e1014; --panel:#14171d; --card:#191d26; --card2:#1f2430;
+  --border:#272d3a; --text:#e7eaf0; --muted:#8b93a5; --accent:#4f8cff;
+  --accent2:#6ea1ff; --green:#3ad98a; --amber:#f2b544; --red:#f36c6c;
+  --radius:12px; --mono:'Cascadia Mono',Consolas,'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,'Segoe UI','Microsoft YaHei',Roboto,'Noto Sans SC',sans-serif;
+  font-size:14px; display:flex; overflow:hidden;
+}
+/* ── 侧栏 ── */
+#sidebar{
+  width:216px; min-width:216px; background:var(--panel); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:16px 12px; gap:4px;
+}
+.logo{display:flex;align-items:center;gap:10px;padding:6px 10px 18px}
+.logo img{width:30px;height:30px;border-radius:8px}
+.logo .name{font-size:17px;font-weight:700;letter-spacing:.3px}
+.logo .name span{color:var(--accent)}
+nav{display:flex;flex-direction:column;gap:2px;flex:1}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;
+  color:var(--muted);cursor:pointer;user-select:none;font-weight:500;border:1px solid transparent;
+}
+.nav-item:hover{color:var(--text);background:var(--card)}
+.nav-item.active{color:var(--text);background:var(--card2);border-color:var(--border)}
+.nav-item .ico{width:18px;text-align:center}
+.side-foot{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.lang-row{display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--muted);font-size:12px}
+select,input[type=text],input[type=password],input[type=number],textarea{
+  background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;
+  padding:7px 10px;font-size:13px;outline:none;width:100%;
+}
+select:focus,input:focus,textarea:focus{border-color:var(--accent)}
+select{cursor:pointer}
+.ver{padding:0 10px;color:var(--muted);font-size:11px}
+/* ── 主区 ── */
+#main{flex:1;overflow-y:auto;padding:26px 30px 60px}
+.page{display:none;max-width:1060px;margin:0 auto}
+.page.active{display:block}
+h1{font-size:20px;margin-bottom:4px}
+.sub{color:var(--muted);margin-bottom:20px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.grid{display:grid;gap:12px}
+.grid.c3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.stat .label{color:var(--muted);font-size:12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.stat .num{font-size:26px;font-weight:700}
+.stat .num small{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.on{background:var(--green)} .dot.off{background:var(--muted)}
+.pico{width:20px;height:20px;border-radius:6px;vertical-align:-4px;margin-right:2px}
+h2 .pico{width:22px;height:22px;border-radius:7px;vertical-align:-5px}
+/* 按钮 */
+button{
+  background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;
+  padding:7px 14px;font-size:13px;cursor:pointer;transition:background .15s,border-color .15s;
+}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.primary:hover{background:var(--accent2)}
+button.danger:hover{border-color:var(--red);color:var(--red)}
+button.ghost{background:transparent}
+button.sm{padding:4px 10px;font-size:12px;border-radius:7px}
+button:disabled{opacity:.5;cursor:not-allowed}
+/* 账号卡片 */
+.acct{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;flex-wrap:wrap}
+.acct .avatar{width:38px;height:38px;border-radius:10px;background:var(--card2);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:var(--accent2)}
+.acct .info{flex:1;min-width:230px}
+.acct .name{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.acct .meta{color:var(--muted);font-size:12px;margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+.badge.ok{color:var(--green);border-color:rgba(58,217,138,.4)}
+.badge.warn{color:var(--amber);border-color:rgba(242,181,68,.4)}
+.badge.err{color:var(--red);border-color:rgba(243,108,108,.4)}
+.badge.acc{color:var(--accent2);border-color:rgba(79,140,255,.4)}
+.quota{margin-top:8px}
+.quota .bar{height:6px;background:var(--card2);border-radius:4px;overflow:hidden;margin-top:4px}
+.quota .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.quota .txt{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:2px}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+/* section */
+.sec{margin-bottom:26px}
+.sec-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sec-head h2{font-size:16px;display:flex;align-items:center;gap:8px}
+/* 模态 */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-mask.show{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;width:560px;max-width:92vw;
+  max-height:86vh;overflow-y:auto;padding:20px 22px}
+.modal h3{margin-bottom:14px;font-size:16px}
+.modal .field{margin-bottom:12px}
+.modal label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}
+.modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.hint{font-size:12px;color:var(--muted);line-height:1.6;margin:8px 0}
+.pill-steps{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.pill-steps .step{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:13px;line-height:1.55}
+.pill-steps .step b{color:var(--accent2)}
+/* API 页 */
+.codebox{background:#0c0e12;border:1px solid var(--border);border-radius:9px;padding:12px 14px;
+  font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-all;color:#c9d4e8;position:relative}
+.codebox .copy{position:absolute;top:8px;right:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{font-family:var(--mono);font-size:11.5px;background:var(--card2);border:1px solid var(--border);
+  border-radius:6px;padding:3px 8px;color:var(--muted)}
+.chip b{color:var(--text);font-weight:600}
+.keyline{display:flex;gap:8px;align-items:center}
+.keyline input{font-family:var(--mono)}
+.fmt-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.fmt-row select{flex:none;max-width:250px;font-size:12px}
+.fmt-row input{flex:1;font-family:var(--mono);font-size:12px}
+.utable{width:100%;border-collapse:collapse;font-size:12px}
+.utable th{color:var(--muted);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.utable td{padding:6px 8px;border-bottom:1px dashed var(--border);white-space:nowrap;vertical-align:top}
+.utable tr:last-child td{border-bottom:none}
+/* 日志 */
+#logsBox{background:#0c0e12;border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px;height:62vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.7}
+#logsBox .l{display:flex;gap:10px;align-items:flex-start}
+#logsBox .t{color:#5b6474;flex:0 0 148px;white-space:nowrap}
+#logsBox .tag{color:var(--accent2);flex:0 0 88px;white-space:nowrap}
+#logsBox .lv-warn{color:var(--amber)} #logsBox .lv-error{color:var(--red)} #logsBox .lv-info{color:#9aa5b8}
+#logsBox .m{flex:1;min-width:0;white-space:pre-wrap;word-break:break-all;color:#c9d4e8}
+/* toast */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card2);
+  border:1px solid var(--border);border-radius:10px;padding:10px 18px;display:none;z-index:99;font-size:13px}
+#toast.show{display:block}
+.empty{color:var(--muted);text-align:center;padding:30px 0;font-size:13px}
+.tabs-mini{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs-mini button{border-radius:8px}
+.tabs-mini button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.setting-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)}
+.setting-row:last-child{border-bottom:none}
+.setting-row .d{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.5}
+.setting-row .ctl{min-width:180px;max-width:300px}
+.switch{position:relative;width:42px;height:24px;flex:none;display:inline-block;vertical-align:middle}
+.switch input{opacity:0;width:0;height:0}
+.switch i{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.2s}
+.switch i:before{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--muted);top:3px;left:3px;transition:.2s}
+.switch input:checked+i{background:rgba(79,140,255,.25);border-color:var(--accent)}
+.switch input:checked+i:before{transform:translateX(18px);background:var(--accent)}
+/* 分享钥匙 */
+.share-item{border:1px solid var(--border);border-radius:9px;padding:12px 14px;margin-bottom:10px;background:var(--card2)}
+.share-item .head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:2px}
+.share-item .head .nm{font-weight:600;min-width:80px}
+.share-item .head .share-key{flex:1;min-width:220px;max-width:340px}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+/* 提供商配置行（钥匙条目 + 创建区共用网格） */
+.prow{display:grid;grid-template-columns:158px 42px 84px 110px 1fr max-content;gap:8px 12px;align-items:center;padding:9px 0;font-size:12.5px}
+.prow + .prow{border-top:1px dashed var(--border)}
+.prow .pvn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .lbl{color:var(--muted);white-space:nowrap}
+.prow .used{color:var(--muted);white-space:nowrap;text-align:right;font-size:12px}
+.prow input[type=number],.prow input[type=text]{width:100%}
+.share-provs{border-top:1px dashed var(--border);margin-top:10px;padding-top:2px}
+#shareCreate .cname{color:var(--muted);font-size:12px;margin:12px 0 5px}
+#shareCreate .cfoot{display:flex;justify-content:flex-end;margin-top:10px}
+</style>
+</head>
+<body data-page-node-id="BDa8yGyGTp68S7Dlfy9A7K">
+<aside id="sidebar" data-page-node-id="pV7U5RDogXBaEHBUzQaesO">
+  <div class="logo" data-page-node-id="73VV8WKovFLOQSeoEy6Wc4">
+    <img src="/favicon.svg" alt="TokenHub" data-page-node-id="Tp83yUApYfS9r2jEAkExTp">
+    <div class="name" data-page-node-id="dJHyiqDiysDcDkIeB9G3pp">Token<span data-page-node-id="Wc2HBdDKqZTET4zxrASiUO">Hub</span></div>
+  </div>
+  <nav data-page-node-id="gSDrtcwtLjY81GGM0DV58Z">
+    <div class="nav-item active" data-page="dashboard" data-page-node-id="4NjpxWemWZTCpkNCQaUuHw"><span class="ico" data-page-node-id="hC4g0xD26RkpREKqg8QhE9">📊</span><span data-i18n="nav_dashboard" data-page-node-id="gVJacvyh7roaL1W09a5AUN"></span></div>
+    <div class="nav-item" data-page="accounts" data-page-node-id="1urA8GmvoDVaGBmXDiC47z"><span class="ico" data-page-node-id="GD9CW1IdRdIpSsP5dvd4zD">👥</span><span data-i18n="nav_accounts" data-page-node-id="6PAfFLPdjGYnhvHzMW1yF4"></span></div>
+    <div class="nav-item" data-page="api" data-page-node-id="b2pkRWBhSxbE7OHAf7M4q5"><span class="ico" data-page-node-id="Hz5eWtA9PAzgOgrvWHQLzP">🔌</span><span data-i18n="nav_api" data-page-node-id="SCIS8TGoGYIzPUvnLOQ2Ht"></span></div>
+    <div class="nav-item" data-page="usage"><span class="ico">📈</span><span data-i18n="nav_usage"></span></div>
+    <div class="nav-item" data-page="logs" data-page-node-id="v1r2oJWPgpFtF4jbEzfh20"><span class="ico" data-page-node-id="f5sSpT2zYgaahWq19FF0R9">📜</span><span data-i18n="nav_logs" data-page-node-id="ThYBnfeI77cAl5sZz8SHtz"></span></div>
+    <div class="nav-item" data-page="settings" data-page-node-id="JawgsrOJPD6dYNMXEpmzQ1"><span class="ico" data-page-node-id="k70m3J95Dk4y87IKlkiNLt">⚙️</span><span data-i18n="nav_settings" data-page-node-id="SOeFStMBllOHv0sCyvwvjz"></span></div>
+  </nav>
+  <div class="side-foot" data-page-node-id="g7Q5pgBNHPxKFDVIJGpMKp">
+    <div class="lang-row" data-page-node-id="dFRJPX56IZAvMWyA602tIl">
+      <span data-page-node-id="STtAW91a2Mi3bPD4M0LD4j">🌐</span>
+      <select id="langSel" data-page-node-id="927kj9zf5pyaJnD4CrjgKz">
+        <option value="zh" data-page-node-id="HTatAzawsrMvgm9zzPHpFu">简体中文</option>
+        <option value="en" data-page-node-id="nShsD6t3g3cdWm75TGt6Cy">English</option>
+      </select>
+    </div>
+    <div class="ver" id="verLine" data-page-node-id="Mtm1pifZKZVaRTPADedAn9">TokenHub</div>
+  </div>
+</aside>
+
+<main id="main" data-page-node-id="k3xOQQvHyrZ114T2KrYGMe">
+  <!-- 总览 -->
+  <section class="page active" id="page-dashboard" data-page-node-id="ZA524YIh0c0DKVGjKScDx8">
+    <div class="spread" data-page-node-id="Bp4k58nT8IKG80mOuL3yKu">
+      <div data-page-node-id="HRg89jlwaFAhH3gwGt9GOi"><h1 data-i18n="dash_title" data-page-node-id="eEFXEfQ73ADhekJ8sFJhIX"></h1><div class="sub" data-i18n="dash_sub" data-page-node-id="NFmvXtr0PArC7QtG1XrAOu"></div></div>
+      <div class="row" data-page-node-id="ovSMgdST1HDu9mXxQNNAyp">
+        <button class="sm" id="btnRefreshQuotas" data-i18n="dash_refresh_quotas" data-page-node-id="wPu1lMmVBP4zreA88gpwBV"></button>
+        <button class="sm" id="btnRefreshTokens" data-i18n="dash_refresh_tokens" data-page-node-id="1tF8Bs5Z42xlWEQlK6WNg4"></button>
+        <button class="sm" id="btnCheckinAll" data-i18n="dash_checkin_all" data-page-node-id="RFCvpvs6RXyTaR709ZSMWG"></button>
+      </div>
+    </div>
+    <div class="grid c3" id="provCards" data-page-node-id="HOpHYTUgMZLLlhhjEvNqRN"></div>
+    <div class="sec" style="margin-top:22px" data-page-node-id="wTKZrBRQftUZL50ZRpzgvW">
+      <div class="sec-head" data-page-node-id="aI1Y2hB7rdfhwFTFxZ87pv"><h2 data-i18n="dash_quick_api" data-page-node-id="58NAcN8KcFyDJnLZTA0gPf"></h2></div>
+      <div class="card" data-page-node-id="SyYnf6zFgF473ZwBrfSxUs">
+        <div class="row" style="margin-bottom:10px" data-page-node-id="e4TmwMnDV3wKCOKMN48vCM">
+          <div style="min-width:250px;flex:1" data-page-node-id="pIaZwNegSBRBJIpR0hbVS1">
+            <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-i18n="api_base_url" data-page-node-id="Joby0l2RoiBB7eJ1IS0J3x"></div>
+            <div class="keyline" data-page-node-id="Tch8AFepJaA3WElIEG9J8f"><input type="text" id="dashBase" readonly data-page-node-id="BpiLkwMinvRtHtOtY2ksDj"><button class="sm" data-copy="dashBase" data-page-node-id="x32zSPXpGnFDveajJVToqi">📋</button></div>
+          </div>
+          <div style="min-width:250px;flex:1" data-page-node-id="T0hHAgI0HyOD3QzJcM9YhN">
+            <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-page-node-id="a5FFHRmSknp0sUn2JHMYKo">API Key</div>
+            <div class="keyline" data-page-node-id="GoiC7RowWKYl29i0SEVTeV"><input type="password" id="dashKey" readonly data-page-node-id="JFn3i9SyWbfEzQ6PPdegxb"><button class="sm" id="dashKeyEye" data-page-node-id="e4USC7Qwin1QX4lRW0LvW9">👁</button><button class="sm" data-copy="dashKey" data-page-node-id="IsOzO5svX0L1Qb4tCAYkxS">📋</button></div>
+          </div>
+        </div>
+        <div class="hint" data-i18n="dash_api_hint" data-page-node-id="pFrHwiaOskNOLHFIsZ7CvX"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 账号 -->
+  <section class="page" id="page-accounts" data-page-node-id="zcOAfA9SK6id1A8A5dTvc8">
+    <div class="spread" data-page-node-id="l0JAu8P5iT13Nzh5Jx50ZC">
+      <div data-page-node-id="9jK6zCGSfmA4feTL994Xle"><h1 data-i18n="acct_title" data-page-node-id="389CUSVK1OZkmjhSf56475"></h1><div class="sub" data-i18n="acct_sub" data-page-node-id="CgL3PvPZpJ0vtQqQaz5C5N"></div></div>
+    </div>
+    <div id="acctSections" data-page-node-id="GpwBCThVp341djzoPOxBKH"></div>
+  </section>
+
+  <!-- API -->
+  <section class="page" id="page-api" data-page-node-id="LgLlGeJh4HvmBhdPZu1Nfz">
+    <div class="spread" data-page-node-id="cPmw1QXdYmdQuyr6SiI2hY"><div data-page-node-id="F0Tknq8dPLWXX32sg78nze"><h1 data-i18n="api_title" data-page-node-id="Wzxvy1zxDQPFJon8XVfQhr"></h1><div class="sub" data-i18n="api_sub" data-page-node-id="YyxtKlejHRXCsM2EIV6aE0"></div></div></div>
+    <div class="card" style="margin-bottom:14px" data-page-node-id="eJfQZqK7TqC6g0YYq2ZtvG">
+      <div class="row" style="margin-bottom:10px" data-page-node-id="Hi3vDBF7bERy0putQK7b7f">
+        <div style="min-width:250px;flex:1" data-page-node-id="KDoGcoeyVcb23Sp7wa7vVG">
+          <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-i18n="api_base_url" data-page-node-id="7tBBbjDYPQ4eMOPHgGcuE5"></div>
+          <div class="keyline" data-page-node-id="SqmPchjh7jyLszFyoQNQTE"><input type="text" id="apiBase" readonly data-page-node-id="evwVS2RiWmJfw5OBVYMzkJ"><button class="sm" data-copy="apiBase" data-page-node-id="ehASqyfRlLkeHfq8RJBXC3">📋</button></div>
+          <div class="fmt-row" data-page-node-id="7ljCxADEtHoCJHdYZuSIEZ">
+            <select id="apiFmtSel" data-page-node-id="Vw6o78RDePBrFFbGTrACDI"></select>
+            <input type="text" id="apiFmtURL" readonly data-page-node-id="FUPF7HwztkT0cN90M8IVRJ">
+            <button class="sm" data-copy="apiFmtURL" data-page-node-id="ujmqaKp8tHbrU66qqCW807">📋</button>
+          </div>
+        </div>
+        <div style="min-width:250px;flex:1" data-page-node-id="qpzib9SACBFQeT6VDzR8o3">
+          <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-page-node-id="uGsL66tB5hHNVppzoMdBRx">API Key</div>
+          <div class="keyline" data-page-node-id="HlyeRwyUCXnk4i4VUOKoGj"><input type="password" id="apiKeyInput" readonly data-page-node-id="QdYoxG5x6qihcSmbJmNzZB"><button class="sm" id="apiKeyEye" data-page-node-id="ItaCVMDkGucvTdBXRDjD29">👁</button><button class="sm" data-copy="apiKeyInput" data-page-node-id="SKFgtNyCrPYDCEFr8vmoog">📋</button></div>
+        </div>
+      </div>
+      <div class="hint" data-i18n="api_compat" data-page-node-id="Ut0UelUbvazKatWrvsjyCO"></div>
+    </div>
+    <!-- 局域网分享 -->
+    <div class="card" style="margin-bottom:14px" data-page-node-id="662q6kfuFEeedECud8iWpL">
+      <div class="row" style="margin-bottom:10px" data-page-node-id="QFQe7CWETU9jjiDE5FzsE0">
+        <div style="min-width:250px;flex:1" data-page-node-id="hwf2rSvEBhh3RTVpMYBY5p">
+          <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-i18n="lan_label" data-page-node-id="wVA7HW1YxMAqFbY66RQPg9"></div>
+          <div class="keyline" data-page-node-id="PBhxKJFzCqTwky8RCvP94p"><input type="text" id="lanBase" readonly data-page-node-id="T7QTDqOQ3CDgUETvWxPrDG"><button class="sm" data-copy="lanBase" data-page-node-id="skUdYSEjbgFA7u9KJUDvD2">📋</button></div>
+          <div class="fmt-row" data-page-node-id="F0bbQ5OSA9I0fMTBhBPAE9">
+            <select id="lanFmtSel" data-page-node-id="EdEeNliXz4BUYEzmQlqOD5"></select>
+            <input type="text" id="lanFmtURL" readonly data-page-node-id="uHZvWsOHY1vj2ZBVKc7k62">
+            <button class="sm" data-copy="lanFmtURL" data-page-node-id="EaIwPWhn4SXJVMWCdHh14O">📋</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="lanHint" data-page-node-id="GCGVBW1PvInvSDO2qzsk07"></div>
+    </div>
+    <!-- 公网分享 -->
+    <div class="card" style="margin-bottom:14px" data-page-node-id="uCEFRnWNnSCzci9MX5b19t">
+      <div class="row" style="margin-bottom:10px" data-page-node-id="n5TYm9042bXs4RSFsrFDnQ">
+        <div style="min-width:250px;flex:1" data-page-node-id="1IPrmnYf67OzzOMvCJeQCC">
+          <div class="label" style="color:var(--muted);font-size:12px;margin-bottom:4px" data-i18n="pub_label" data-page-node-id="OLx49eKCaz0zLkut3sHKD5"></div>
+          <div class="keyline" data-page-node-id="19pZXVIfGjrD5aAtBDpjWd"><input type="text" id="pubURL" readonly data-page-node-id="8XEJG4zqYEZFzTv5Nx7gJf"><button class="sm" data-copy="pubURL" data-page-node-id="sS3vmXe5jgQKD4YCEGKjX0">📋</button></div>
+        </div>
+        <button class="primary" id="btnPubToggle" style="flex:none" data-page-node-id="aVWnkghLikBlDdifZBYKqk"></button>
+      </div>
+      <div class="fmt-row" data-page-node-id="2esc70oj0ytPDIKJCJWhLJ">
+        <select id="pubFmtSel" data-page-node-id="PbJ8a7B1nhoOyXgriZixcy"></select>
+        <input type="text" id="pubFmtURL" readonly data-page-node-id="eSrRjEZNMGvBGfh25lc5lg">
+        <button class="sm" data-copy="pubFmtURL" data-page-node-id="7HrRUbABbWqncGfQCDMW6X">📋</button>
+      </div>
+      <div class="hint" id="pubStatus" data-page-node-id="0cLVNQn8znFGlcqtF5pqtJ"></div>
+      <div class="hint" data-i18n="pub_hint" data-page-node-id="HNyrBdmcB7pdgb9DMA6bba"></div>
+    </div>
+    <!-- 分享钥匙 -->
+    <div class="card" style="margin-bottom:14px" data-page-node-id="KB1piy1J4OPxnwn2tVgijG">
+      <div class="sec-head" data-page-node-id="x8ubK6f6WQ5rZwlMmOk99L"><h2 data-i18n="share_title" data-page-node-id="fU0NsOBzxGjASH98ivVifi"></h2></div>
+      <div class="hint" data-i18n="share_hint" data-page-node-id="V5AAEEAKR2xA5bMviteHCy"></div>
+      <div id="shareList" data-page-node-id="vRmbHxAQHJBjfw9e739EVw"></div>
+      <div id="shareCreate" data-page-node-id="dU8UG4SNk1InJEWGppller"></div>
+    </div>
+    <!-- 用量日志 -->
+    <div class="card" style="margin-bottom:14px" data-page-node-id="vS8EPJUOGl6hZncFCD31jl">
+      <div class="sec-head" data-page-node-id="nlcVhyeYxLJ9qmPhkramtL"><h2 data-i18n="usage_title" data-page-node-id="rHPNcpfw3OuIn8VYr3edkZ"></h2></div>
+      <div class="hint" data-i18n="usage_hint" data-page-node-id="NCc8qIviY3AbmQ2dtaIjTv"></div>
+      <div style="overflow-x:auto" data-page-node-id="r5kkHSF6pBAeCzjhz6AG5e">
+        <table class="utable" data-page-node-id="r8nEDmVRkyKhFY5ZAcm2o5"><thead id="usageHead" data-page-node-id="5F4PR2mqnqxXktPuYRMXIX"></thead><tbody id="usageList" data-page-node-id="mMMMIsMJJVYQmH6NdvxwM0"></tbody></table>
+      </div>
+    </div>
+    <div class="card" data-page-node-id="HKt2P52QKJyMNh2AhoB9e8">
+      <div class="tabs-mini" id="exTabs" data-page-node-id="iKANjxhlLAPTT15gCacVA6">
+        <button data-ex="curl" class="on" data-page-node-id="jrsz4Moqv0KjlucBy5TjMs">curl</button>
+        <button data-ex="cherry" data-page-node-id="J7DbLAnKMorC6wHqhruzNK">Cherry Studio</button>
+        <button data-ex="claude" data-page-node-id="WIRLtYlBAL7HIb77vwT4zN">Claude Code</button>
+        <button data-ex="cline" data-page-node-id="qiSzX32krsKMOQLOJCEcZE">Cline / Roo Code</button>
+        <button data-ex="sdk" data-page-node-id="OrYT4F31Fv3eBHCSCogbZ5">OpenAI SDK</button>
+        <button data-ex="anthropic" data-page-node-id="kYTKrRnA5lBN3xMgMDflGh">Anthropic SDK</button>
+      </div>
+      <div class="codebox" id="exBox" data-page-node-id="sCDcvc2Xg1e3hwb2DtLJUW"></div>
+    </div>
+    <div class="sec" style="margin-top:14px" data-page-node-id="7qEXxdeMaBkLcKe5fHqZn8">
+      <div class="sec-head" data-page-node-id="362zwLlRFX8x34xHwgD8PW"><h2 data-i18n="api_models" data-page-node-id="P0FtVWaQUgRu9qCJ9kBsHf"></h2><button class="sm" id="btnReloadModels" data-i18n="reload" data-page-node-id="HY1fQCWktwAnPidvgWkStH"></button></div>
+      <div class="card" data-page-node-id="wisrejv64BYUnnGz5v2aLJ"><div class="chips" id="modelChips" data-page-node-id="Shzb9Zz3sxUK1IxuiKLM49"></div></div>
+    </div>
+  </section>
+
+  <!-- 用量 -->
+  <section class="page" id="page-usage">
+    <div class="spread"><div><h1 data-i18n="usage_title"></h1><div class="sub" data-i18n="usage_sub"></div></div>
+      <button class="sm" id="btnReloadUsage" data-i18n="usage_reload"></button>
+    </div>
+    <div class="row" id="usageCards" style="gap:12px;margin-bottom:14px"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3 data-i18n="usage_quota_title"></h3>
+      <div id="usageQuotaList"></div>
+    </div>
+    <div class="row" style="gap:14px;align-items:flex-start">
+      <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_caller"></h3><div id="usageByCaller"></div></div>
+      <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_provider"></h3><div id="usageByProvider"></div></div>
+      <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_model"></h3><div id="usageByModel"></div></div>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="page" id="page-logs" data-page-node-id="StPm0ZHYDEkjVA4TVAuLfd">
+    <div class="spread" data-page-node-id="5GXjBmrm2VlgF2T13UaPI5">
+      <div data-page-node-id="mReZEIL6LDbP5XaYaMAcuW"><h1 data-i18n="logs_title" data-page-node-id="BD00O6mkNP0mEel09Jdhna"></h1><div class="sub" data-i18n="logs_sub" data-page-node-id="BGyi26Y8KawAZieEk9FGOm"></div></div>
+      <button class="sm" id="btnClearLogsView" data-i18n="logs_clear" data-page-node-id="rhvQk6qKKjN4iv9vpm5lUx"></button>
+    </div>
+    <div id="logsBox" data-page-node-id="6zzX0GjPcGnVkKekN5WA57"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section class="page" id="page-settings" data-page-node-id="bDAwxjLTb584MhkoYIob0P">
+    <div class="spread" data-page-node-id="41otSFx0OpEAtHGulQ4VvR"><div data-page-node-id="ZY6mZmBxonfpCrxwTCQLAe"><h1 data-i18n="set_title" data-page-node-id="5diZC7XYeDqTpBTkFzw4Po"></h1><div class="sub" data-i18n="set_sub" data-page-node-id="H1aDO7f6FZuBiUq93y9hIo"></div></div></div>
+    <div class="card" id="settingsCard" data-page-node-id="BGquFYdgjGvd2rQMP26mIG"></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end" data-page-node-id="91nBvLHrFrq0UsBoX1mARw">
+      <button class="primary" id="btnSaveSettings" data-i18n="save" data-page-node-id="czDFRxOvIj9QSMynUw9Llu"></button>
+    </div>
+  </section>
+</main>
+
+<!-- 添加账号模态 -->
+<div class="modal-mask" id="addModal" data-page-node-id="VJlkEfW63D2fi5ygShaCBa">
+  <div class="modal" data-page-node-id="RE8n4mtuBQuGxT3VmUtlOX">
+    <h3 id="addTitle" data-page-node-id="Xs0EFDqlCgfu201q8J4Llm"></h3>
+    <div id="addBody" data-page-node-id="zf7yaG34d06k6HHviDYGh2"></div>
+    <div class="foot" data-page-node-id="WPAar3Za19Es6j06x88xvo">
+      <button id="addClose" data-i18n="cancel" data-page-node-id="8qvCkL9vSdWuIX1iXsvBFk"></button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" data-page-node-id="TQCrdz85PrRBQuouyMyDVO"></div>
+<script src="/app.js"></script>
+</body>
+</html>
