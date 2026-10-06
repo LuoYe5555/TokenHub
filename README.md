@@ -99,7 +99,6 @@ scripts\mock\mock.exe    （mock 三家上游，本地联调用：先起 mock �
 
 - `data\`（账号凭据 / API Key / 日志）已被 `.gitignore` 排除，不会被提交
 - 本项目仅供个人学习与自用，请遵守各服务商的用户协议；使用本项目产生的账号风险由使用者自行承担
-- 参考与致谢：TraeHop（MIT）提供的 Trae 登录切换思路、[ekzhang/bore](https://github.com/ekzhang/bore)（MIT）隧道协议
 
 ## 常见问题
 
