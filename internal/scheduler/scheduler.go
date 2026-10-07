@@ -32,6 +32,7 @@ type Scheduler struct {
 	mu             sync.Mutex
 	lastZcodeClaim time.Time
 	quotaBusy      bool
+	lastKick       time.Time // KickQuotaRefresh 去抖
 }
 
 func New(cfg *config.Config, st *store.Store, pl *pool.Pool) *Scheduler {
@@ -115,6 +116,10 @@ func (s *Scheduler) RunCheckinPass(ctx context.Context, force bool) {
 			}
 		}
 		already, msg, err := p.Checkin(ctx, acct)
+		// Checkin 内部可能补了 deviceId（trae 9004 根因），无论成败都落库
+		if did := acct.ExtraGet(store.ExtraTraeDeviceID); did != "" {
+			_ = s.store.Mutate(acct.ID, func(a *store.Account) { a.ExtraSet(store.ExtraTraeDeviceID, did) })
+		}
 		if err != nil {
 			logx.Warnf(string(acct.Provider), "账号 %s 签到/领取失败: %v", acct.DisplayedName(), err)
 			_ = s.store.Mutate(acct.ID, func(a *store.Account) {
@@ -213,6 +218,48 @@ func (s *Scheduler) RunQuotaRefresh(ctx context.Context) {
 		s.quotaBusy = false
 		s.mu.Unlock()
 	}()
+	s.refreshAll(ctx)
+}
+
+// RefreshOne 拉取单个账号的额度快照并落库（供网关调用后自动同步用量）。
+func (s *Scheduler) RefreshOne(acctID string) {
+	acct := s.store.Get(acctID)
+	if acct == nil || !acct.Enabled || acct.Dead {
+		return
+	}
+	prov := s.pool.Provider(acct.Provider)
+	p, ok := prov.(providerP)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	snap, err := p.Quota(ctx, acct)
+	if err != nil {
+		return
+	}
+	_ = s.store.Mutate(acctID, func(x *store.Account) { x.LastQuota = snap })
+	s.rejoinIfRecovered(acct, snap)
+	s.autoSwitchIfExhausted(acct, snap)
+}
+
+// KickQuotaRefresh 异步触发一轮全量额度刷新（5 秒去抖 + 进行中跳过）。
+func (s *Scheduler) KickQuotaRefresh() {
+	s.mu.Lock()
+	if s.quotaBusy || time.Since(s.lastKick) < 5*time.Second {
+		s.mu.Unlock()
+		return
+	}
+	s.lastKick = time.Now()
+	s.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		s.RunQuotaRefresh(ctx)
+	}()
+}
+
+func (s *Scheduler) refreshAll(ctx context.Context) {
 	sem := make(chan struct{}, 3)
 	var wg sync.WaitGroup
 	for _, acct := range s.store.All() {

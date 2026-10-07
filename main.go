@@ -107,7 +107,10 @@ func main() {
 		return
 	}
 	ulog := usagelog.Load(*dataDir)
+	// 调用后自动同步额度：每次 API 调用完成后异步刷新一次全量快照（scheduler 内部去抖），
+	// 保证用量页「今日 tokens」与各账号「已用」实时一致。
 	gw := gateway.New(cfg, pl, sh, ulog)
+	gw.AfterCall = func(provName string, ok bool) { sched.KickQuotaRefresh() }
 
 	// 公网分享专用「仅 API 监听」：只挂网关路由，绑定 127.0.0.1，
 	// 隧道只转发到这个端口 —— 面板 / 账号数据永远不会暴露到公网。
@@ -185,6 +188,8 @@ func main() {
 		}()
 		// 窗口图标：-icon 参数 > 配置 windowIcon > 内置图标
 		applyWindowIcon(w, *dataDir)
+		// webview 桥：自动领取撞验证码时自动弹窗 + SendInput 自动滑块（全程免人工）
+		panel.SetWebview(w.Dispatch, func(js string) { w.Eval(js) }, uintptr(w.Window()))
 		w.Run() // 阻塞直到窗口关闭
 		logx.Infof("main", "窗口已关闭，正在退出…")
 		shutdown(srv)

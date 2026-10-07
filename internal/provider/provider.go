@@ -15,7 +15,18 @@ type Usage struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	TotalTokens      int64 `json:"total_tokens"`
+	// 缓存部分（Anthropic 系接口单独上报，上游计费通常包含这两项）
+	CacheReadTokens  int64 `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64 `json:"cache_write_tokens,omitempty"`
 	Present          bool  `json:"-"`
+}
+
+// BilledTokens 返回按上游口径的计费总量（输入+缓存读写+输出）。
+func (u *Usage) BilledTokens() int64 {
+	if u == nil {
+		return 0
+	}
+	return u.PromptTokens + u.CompletionTokens + u.CacheReadTokens + u.CacheWriteTokens
 }
 
 // ToolDelta 流式工具调用片段。

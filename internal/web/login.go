@@ -491,18 +491,24 @@ func (p *Panel) handleZcodeClaim(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "zcode 提供商未注册")
 		return
 	}
-	name, err := prov.ClaimPlan(r.Context(), acct, in.PlanID, in.Captcha, in.Region)
+	name, already, err := prov.ClaimPlan(r.Context(), acct, in.PlanID, in.Captcha, in.Region)
 	if err != nil {
 		writeErr(w, 502, err.Error())
 		return
 	}
-	prov.ClearPendingClaim(acct.ID, in.PlanID) // 人工领取成功 → 移出待办横幅
+	prov.ClearPendingClaim(acct.ID, in.PlanID) // 领取成功（含已领取过）→ 移出待办横幅
 	_ = p.store.Mutate(acct.ID, func(a *store.Account) {
 		a.LastCheckinAt = time.Now().Unix()
-		a.LastCheckinMsg = "已领取 " + name
+		if already {
+			a.LastCheckinMsg = "已领取过 " + name
+		} else {
+			a.LastCheckinMsg = "已领取 " + name
+		}
 	})
-	go p.afterAdd(acct)
-	writeJSON(w, map[string]any{"ok": true, "planName": name})
+	if !already {
+		go p.afterAdd(acct)
+	}
+	writeJSON(w, map[string]any{"ok": true, "planName": name, "already": already})
 }
 
 // handleZcodePending 自动领取时撞到验证码、待人工滑块领取的活动列表。

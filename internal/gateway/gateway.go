@@ -25,6 +25,10 @@ type Gateway struct {
 	pool   *pool.Pool
 	shares *shares.Manager // 可为 nil（不启用分享钥匙）
 	ulog   *usagelog.Log   // 可为 nil（不记录用量日志）
+
+	// AfterCall 每次 API 调用完成后异步回调（参数：提供商名、成功与否），
+	// 用于触发额度快照自动刷新（可为 nil）。
+	AfterCall func(provName string, ok bool)
 }
 
 func New(cfg *config.Config, pl *pool.Pool, sh *shares.Manager, ul *usagelog.Log) *Gateway {
@@ -155,20 +159,17 @@ func (u *usageRecorder) tokens() int64 {
 	if u.usage == nil || !u.usage.Present {
 		return 0
 	}
-	if u.usage.TotalTokens > 0 {
-		return u.usage.TotalTokens
-	}
-	return u.usage.PromptTokens + u.usage.CompletionTokens
+	return u.usage.BilledTokens()
 }
 
-// pc 返回 (prompt, completion, total) 明细，无 usage 时全 0。
-func (u *usageRecorder) pc() (int64, int64, int64) {
+// pc 返回 (prompt, completion, cacheRead, cacheWrite, total)，无 usage 时全 0。
+func (u *usageRecorder) pc() (int64, int64, int64, int64, int64) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.usage == nil || !u.usage.Present {
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
-	return u.usage.PromptTokens, u.usage.CompletionTokens, u.usage.PromptTokens + u.usage.CompletionTokens
+	return u.usage.PromptTokens, u.usage.CompletionTokens, u.usage.CacheReadTokens, u.usage.CacheWriteTokens, u.usage.BilledTokens()
 }
 
 // logUsage 追加一条用量日志（ulog 未启用时忽略）。
@@ -188,9 +189,17 @@ func (g *Gateway) logUsage(r *http.Request, model, provName string, start time.T
 		e.ErrMsg = asPerr(err).Msg
 	}
 	if rec != nil {
-		e.PromptTokens, e.CompletionTokens, e.TotalTokens = rec.pc()
+		e.PromptTokens, e.CompletionTokens, e.CacheReadTokens, e.CacheWriteTokens, e.TotalTokens = rec.pc()
 	}
 	g.ulog.Add(e)
+}
+
+// notifyAfterCall 统一触发调用后回调（异步、防抖由接收方负责）。
+func (g *Gateway) notifyAfterCall(provName string, err error) {
+	if g.AfterCall == nil {
+		return
+	}
+	go g.AfterCall(provName, err == nil)
 }
 
 func writeOpenAIError(w http.ResponseWriter, status int, code, msg string) {
@@ -286,6 +295,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
 		}
 		g.logUsage(r, model, prov.Name(), start, rec, err)
+		g.notifyAfterCall(prov.Name(), err)
 		if err != nil {
 			logx.Errorf("gateway", "chat(%s) 失败: %v", model, err)
 			if !sink.Wrote() {
@@ -305,6 +315,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
 	}
 	g.logUsage(r, model, prov.Name(), start, rec, err)
+	g.notifyAfterCall(prov.Name(), err)
 	if err != nil {
 		pe := asPerr(err)
 		logx.Errorf("gateway", "chat(%s) 失败: %v", model, err)
@@ -632,6 +643,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
 		}
 		g.logUsage(r, model, prov.Name(), start, rec, err)
+		g.notifyAfterCall(prov.Name(), err)
 		if err != nil {
 			logx.Errorf("gateway", "messages(%s) 失败: %v", model, err)
 			if !sink.Wrote() {
@@ -651,6 +663,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
 		}
 		g.logUsage(r, model, prov.Name(), start, rec, err)
+		g.notifyAfterCall(prov.Name(), err)
 		pe := asPerr(err)
 		writeAnthropicError(w, mapClientStatus(pe), "api_error", pe.Msg)
 		return
@@ -659,6 +672,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
 	}
 	g.logUsage(r, model, prov.Name(), start, rec, nil)
+	g.notifyAfterCall(prov.Name(), nil)
 	raw, perr := sink.Result()
 	if perr != nil {
 		writeAnthropicError(w, mapClientStatus(perr), "api_error", perr.Msg)

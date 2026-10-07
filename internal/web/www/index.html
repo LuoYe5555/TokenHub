@@ -128,8 +128,9 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .utable td{padding:6px 8px;border-bottom:1px dashed var(--border);white-space:nowrap;vertical-align:top}
 .utable tr:last-child td{border-bottom:none}
 /* 日志 */
+#page-logs{max-width:none}
 #logsBox{background:#0c0e12;border:1px solid var(--border);border-radius:var(--radius);
-  padding:12px;height:62vh;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.7}
+  padding:12px;height:calc(100vh - 235px);min-height:360px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.7}
 #logsBox .l{display:flex;gap:10px;align-items:flex-start}
 #logsBox .t{color:#5b6474;flex:0 0 148px;white-space:nowrap}
 #logsBox .tag{color:var(--accent2);flex:0 0 88px;white-space:nowrap}
@@ -300,9 +301,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="card" style="margin-bottom:14px" data-page-node-id="vS8EPJUOGl6hZncFCD31jl">
       <div class="sec-head" data-page-node-id="nlcVhyeYxLJ9qmPhkramtL"><h2 data-i18n="usage_title" data-page-node-id="rHPNcpfw3OuIn8VYr3edkZ"></h2></div>
       <div class="hint" data-i18n="usage_hint" data-page-node-id="NCc8qIviY3AbmQ2dtaIjTv"></div>
-      <div style="overflow-x:auto" data-page-node-id="r5kkHSF6pBAeCzjhz6AG5e">
+      <div style="overflow-x:auto;overflow-y:auto;min-height:520px" data-page-node-id="r5kkHSF6pBAeCzjhz6AG5e">
         <table class="utable" data-page-node-id="r8nEDmVRkyKhFY5ZAcm2o5"><thead id="usageHead" data-page-node-id="5F4PR2mqnqxXktPuYRMXIX"></thead><tbody id="usageList" data-page-node-id="mMMMIsMJJVYQmH6NdvxwM0"></tbody></table>
       </div>
+      <div id="usagePager" style="display:none;align-items:center;justify-content:center;gap:6px;padding:10px 0 2px"></div>
     </div>
     <div class="card" data-page-node-id="HKt2P52QKJyMNh2AhoB9e8">
       <div class="tabs-mini" id="exTabs" data-page-node-id="iKANjxhlLAPTT15gCacVA6">

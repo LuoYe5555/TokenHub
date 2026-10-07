@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"tokenhub/internal/logx"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/store"
+	"tokenhub/internal/winproc"
 )
 
 const appVersionFallback = "3.14.3"
@@ -37,7 +37,7 @@ func WarmAppVersion() {
 			`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
 			`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`,
 		} {
-			out, err := exec.Command("reg", "query", hive, "/s", "/v", "DisplayVersion").CombinedOutput()
+			out, err := winproc.Cmd("reg", "query", hive, "/s", "/v", "DisplayVersion").CombinedOutput()
 			if err != nil {
 				continue
 			}
@@ -202,7 +202,7 @@ func clientTimezone() string {
 }
 
 func osTimezone() string {
-	out, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-TimeZone).Id").Output()
+	out, err := winproc.Cmd("powershell", "-NoProfile", "-Command", "(Get-TimeZone).Id").Output()
 	if err == nil {
 		return strings.TrimSpace(string(out))
 	}
@@ -280,9 +280,10 @@ func localHome() string {
 // ── Provider ──
 
 type Provider struct {
-	cfg     *config.Config
-	pendMu  sync.Mutex
-	pending map[string][]pendingClaim // accountID → 待人工验证领取的活动
+	cfg            *config.Config
+	pendMu         sync.Mutex
+	pending        map[string][]pendingClaim // accountID → 待人工验证领取的活动
+	captchaTrigger func()                    // 撞到验证码时的回调（自动滑块）
 }
 
 func New(cfg *config.Config) *Provider {
@@ -336,7 +337,7 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		sink.Close()
 		return err
 	}
-	applyShape(body, p.cfg.ZCodeInjectShape)
+	applyShape(body, p.cfg.ZCodeInjectShape, stableSessionHex(acct.ID))
 	raw, err := json.Marshal(body)
 	if err != nil {
 		sink.Close()
@@ -761,18 +762,30 @@ type pendingClaim struct {
 	Name   string `json:"name"`
 }
 
+// SetCaptchaTrigger 注册"撞到验证码"时的回调（面板用来自动弹窗 + SendInput 自动滑块）。
+func (p *Provider) SetCaptchaTrigger(fn func()) {
+	p.captchaTrigger = fn
+}
+
 func (p *Provider) addPendingClaim(acctID, planID, name string) {
 	p.pendMu.Lock()
 	defer p.pendMu.Unlock()
 	if p.pending == nil {
 		p.pending = map[string][]pendingClaim{}
 	}
+	exists := false
 	for _, pc := range p.pending[acctID] {
 		if pc.PlanID == planID {
-			return
+			exists = true
+			break
 		}
 	}
-	p.pending[acctID] = append(p.pending[acctID], pendingClaim{planID, name})
+	if !exists {
+		p.pending[acctID] = append(p.pending[acctID], pendingClaim{planID, name})
+	}
+	if fn := p.captchaTrigger; fn != nil {
+		go fn() // 异步触发，不阻塞领取循环
+	}
 }
 
 func (p *Provider) ClearPendingClaim(acctID, planID string) {
@@ -814,7 +827,7 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 	var lastErr error
 	claimed := 0
 	for _, plan := range plans {
-		res, err := p.ClaimPlan(ctx, acct, plan.PlanID, "", "")
+		res, already, err := p.ClaimPlan(ctx, acct, plan.PlanID, "", "")
 		if err != nil {
 			lastErr = err
 			msgs = append(msgs, fmt.Sprintf("%s: %v", plan.Name, err))
@@ -824,8 +837,12 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 			}
 			continue
 		}
-		claimed++
 		p.ClearPendingClaim(acct.ID, plan.PlanID)
+		if already {
+			msgs = append(msgs, fmt.Sprintf("%s 已领取过", res))
+			continue
+		}
+		claimed++
 		msgs = append(msgs, fmt.Sprintf("已领取 %s", res))
 	}
 	summary := strings.Join(msgs, "；")
@@ -917,12 +934,14 @@ var claimFailMsg = map[int64]string{
 	401:  "请先登录后再领取",
 }
 
-// ClaimPlan 领取指定活动套餐。
-func (p *Provider) ClaimPlan(ctx context.Context, acct *store.Account, planID, captchaParam, region string) (string, error) {
+// ClaimPlan 领取指定活动套餐。already=true 表示上游返回「已领取过」——tokens 实际已到账，
+// 按幂等成功返回（并发场景：定时任务与手动领取可能同时进行，后到的请求拿到 1003，
+// 若当失败处理会把验证码 SDK 的滑块重置成手动模式）。
+func (p *Provider) ClaimPlan(ctx context.Context, acct *store.Account, planID, captchaParam, region string) (name string, already bool, err error) {
 	pc := p.cfg.PC(store.PZCode)
 	token, err := p.planToken(acct)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	h := billingHeaders(token, deviceMid(acct))
 	if captchaParam != "" {
@@ -934,19 +953,22 @@ func (p *Provider) ClaimPlan(ctx context.Context, acct *store.Account, planID, c
 	body := map[string]any{"plan_id": planID}
 	var out map[string]any
 	if _, err := httpx.DoJSON(ctx, "POST", apiBase(pc)+"/api/v1/zcode-plan/billing/claim", h, body, &out, 30*time.Second); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if codeOf(out) != 0 {
 		code := int64(codeOf(out))
+		if code == 1003 { // 已领取过：幂等成功
+			return planID, true, nil
+		}
 		serverMsg := strOr(out["msg"], out["message"])
 		base := claimFailMsg[code]
 		if base == "" {
 			base = "领取失败"
 		}
 		if serverMsg != "" {
-			return "", fmt.Errorf("%s（%s）", base, serverMsg)
+			return "", false, fmt.Errorf("%s（%s）", base, serverMsg)
 		}
-		return "", fmt.Errorf("%s", base)
+		return "", false, fmt.Errorf("%s", base)
 	}
 	planName := planID
 	if d, ok := out["data"].(map[string]any); ok {
@@ -957,7 +979,7 @@ func (p *Provider) ClaimPlan(ctx context.Context, acct *store.Account, planID, c
 		}
 	}
 	logx.Infof("zcode", "账号 %s 领取成功: %s", acct.DisplayedName(), planName)
-	return planName, nil
+	return planName, false, nil
 }
 
 // RawQuotaSources 返回额度相关上游接口的原始响应（面板「原始数据」诊断用）。

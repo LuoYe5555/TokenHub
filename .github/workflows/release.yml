@@ -1,0 +1,98 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-by-commit-message
+  cancel-in-progress: false
+
+jobs:
+  build_and_release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build TokenHub.exe
+        shell: pwsh
+        run: |
+          go vet ./...
+          go build -ldflags "-s -w -H windowsgui" -o TokenHub.exe .
+
+      - name: Prepare tag name from commit message
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RAW_FIRST_LINE="$(printf "%s" "${{ github.event.head_commit.message }}" | head -n 1 | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+
+          CLEAN="$(printf "%s" "$RAW_FIRST_LINE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9._-]+/-/g' \
+            | sed -E 's/-+/-/g' \
+            | sed -E 's/^-+|-+$//g' \
+            | cut -c1-40)"
+
+          if [ -z "$CLEAN" ]; then
+            CLEAN="release"
+          fi
+
+          SHORT_SHA="$(printf "%s" "${GITHUB_SHA}" | cut -c1-7)"
+          TAG="${CLEAN}-${SHORT_SHA}"
+
+          echo "raw_first_line=$RAW_FIRST_LINE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skip creating."
+            exit 0
+          fi
+
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          if [ ! -f TokenHub.exe ]; then
+            echo "TokenHub.exe not found. Build may have failed."
+            ls -la || true
+            exit 1
+          fi
+
+          cp TokenHub.exe dist/
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.raw_first_line }}
+          generate_release_notes: true
+          files: |
+            dist/*

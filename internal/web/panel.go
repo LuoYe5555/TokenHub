@@ -10,11 +10,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"tokenhub/internal/config"
+	"tokenhub/internal/autoslide"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
@@ -43,6 +45,48 @@ type Panel struct {
 	zcodeSess   map[string]*zcode.LoginSession // flowID → session
 	trae        map[string]*traePending        // pendingID → pending
 	traeCBStarted bool
+
+	wvDispatch func(func()) // webview UI 线程派发器（窗口模式才非空）
+	wvEval     func(string) // 在 webview 里执行 JS（须先 Dispatch）
+	wvHwnd     uintptr      // 主窗口句柄（SendInput 前置聚焦）
+}
+
+// SetWebview 窗口模式下注入 webview 桥：自动领取撞到验证码时，
+// 后端直接调起前端自动滑块流程，全程无需人工操作。
+func (p *Panel) SetWebview(dispatch func(func()), eval func(string), hwnd uintptr) {
+	p.mu.Lock()
+	p.wvDispatch, p.wvEval, p.wvHwnd = dispatch, eval, hwnd
+	p.mu.Unlock()
+	if prov, ok := p.providerFor(store.PZCode).(*zcode.Provider); ok {
+		prov.SetCaptchaTrigger(func() {
+			if dispatch == nil || eval == nil {
+				return
+			}
+			dispatch(func() { eval("window.zcAutoClaimPending && window.zcAutoClaimPending()") })
+		})
+	}
+}
+
+// handleZcodeSliderRect 前端把滑块 iframe 的屏幕物理坐标发过来，
+// 后端用 SendInput 拟人拖拽（trusted 事件，风控视为真人）。
+func (p *Panel) handleZcodeSliderRect(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		X1, Y1, X2, Y2 int
+	}
+	if err := readBody(r, &in); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if p.wvHwnd == 0 {
+		writeErr(w, 400, "自动滑块仅窗口模式可用")
+		return
+	}
+	autoslide.FocusWindow(p.wvHwnd)
+	if err := autoslide.Drag(in.X1, in.Y1, in.X2, in.Y2); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 type traePending struct {
@@ -133,6 +177,7 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("GET /api/panel/usage-summary", p.handleUsageSummary)
 	api("POST /api/panel/zcode/claim", p.handleZcodeClaim)
 	api("GET /api/panel/zcode/captcha-config", p.handleZcodeCaptchaConfig)
+	api("POST /api/panel/zcode/slider-rect", p.handleZcodeSliderRect)
 
 	// 公网分享（隧道）与分享钥匙
 	api("POST /api/panel/tunnel/start", p.handleTunnelStart)
@@ -170,13 +215,36 @@ func (p *Panel) handleSharesList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"shares": p.shares.All()})
 }
 
-// handleUsageList 用量日志（最近 200 条，新在前）。
+// handleUsageList 用量日志（分页，新在前）。?page=1&page_size=50
 func (p *Panel) handleUsageList(w http.ResponseWriter, r *http.Request) {
 	if p.ulog == nil {
-		writeJSON(w, map[string]any{"entries": []any{}})
+		writeJSON(w, map[string]any{"entries": []any{}, "total": 0, "page": 1, "pageSize": 15})
 		return
 	}
-	writeJSON(w, map[string]any{"entries": p.ulog.List(200)})
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	size, _ := strconv.Atoi(q.Get("page_size"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 10 || size > 200 {
+		size = 15
+	}
+	all := p.ulog.List(0)
+	total := len(all)
+	start := (page - 1) * size
+	if start > total {
+		start = total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	entries := all[start:end]
+	if entries == nil {
+		entries = []usagelog.Entry{}
+	}
+	writeJSON(w, map[string]any{"entries": entries, "total": total, "page": page, "pageSize": size})
 }
 
 func (p *Panel) handleShareCreate(w http.ResponseWriter, r *http.Request) {
@@ -353,6 +421,8 @@ func (p *Panel) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"accounts": accounts,
 		"summary":  sums,
 		"localIP":  localIP(),
+		// 页面跑在内嵌 WebView 里（而非外部浏览器）时才允许自动滑块
+		"webviewWindow": p.wvDispatch != nil,
 	})
 }
 
@@ -638,6 +708,10 @@ func (p *Panel) handleAccountCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	already, msg, err := prov.Checkin(r.Context(), acct)
+	// Checkin 内部可能补了 deviceId（9004 根因），无论成败都落库
+	if did := acct.ExtraGet(store.ExtraTraeDeviceID); did != "" {
+		_ = p.store.Mutate(id, func(a *store.Account) { a.ExtraSet(store.ExtraTraeDeviceID, did) })
+	}
 	result := map[string]any{"already": already, "msg": msg}
 	if err != nil {
 		result["error"] = err.Error()
@@ -887,15 +961,28 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	// 最近调用量（usagelog 环形缓冲，最多 500 条）
 	entries := p.ulog.List(0)
-	now := time.Now().Unix()
-	todayStart := now - int64(now-8*3600)%86400 // UTC+8 当天零点
-	weekStart := now - 7*86400
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	weekStart := now.Unix() - 7*86400
+	// 今日卡片用持久化台账（不受环形缓冲 500 条裁剪影响，跨重启保留）；
+	// 近 7 天仍按缓冲内条目聚合（只作趋势参考）。
+	var todayTokens, todayReqs int64
+	var cacheRead, cacheWrite, cacheIn float64
+	if td := p.ulog.Today(); td.Day == now.Format("2006-01-02") {
+		todayTokens, todayReqs = td.Tokens, td.Reqs
+		cacheRead, cacheWrite = float64(td.CacheRead), float64(td.CacheWrite)
+		cacheIn = float64(td.InTokens + td.CacheRead + td.CacheWrite)
+	}
+	cacheHit := 0.0
+	if cacheIn > 0 {
+		cacheHit = cacheRead / cacheIn
+	}
 	type agg struct {
 		Tokens   int64   `json:"tokens"`
 		Requests int64   `json:"requests"`
 		Ok       int64   `json:"ok"`
 	}
-	var today, week agg
+	var week agg
 	byCaller := map[string]*agg{}
 	byProvider := map[string]*agg{}
 	byModel := map[string]*agg{}
@@ -911,8 +998,8 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 		}
 		a := agg{Tokens: e.TotalTokens, Requests: 1, Ok: 1}
 		if e.Time >= todayStart {
-			today.Tokens += a.Tokens
-			today.Requests++
+			week.Tokens += a.Tokens
+			week.Requests++
 		}
 		if e.Time >= weekStart {
 			week.Tokens += a.Tokens
@@ -956,7 +1043,8 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"accounts": accounts,
 		"tokens": map[string]any{
-			"today": today.Tokens, "week": week.Tokens,
+			"today": todayTokens, "todayReqs": todayReqs, "week": week.Tokens,
+			"cacheHit": cacheHit, "cacheRead": int64(cacheRead), "cacheWrite": int64(cacheWrite),
 			"requests": totalReqs, "ok": totalOk, "tracked": len(entries),
 		},
 		"byCaller":   toRows(byCaller),

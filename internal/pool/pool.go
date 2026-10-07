@@ -239,8 +239,10 @@ func (p *Pool) Chat(ctx context.Context, model string, openaiReq []byte, sink pr
 	var lastErr *provider.Error
 	attempts := 0
 	for attempts < maxTries {
+		p.mu.Lock()
 		idx := p.rr[prov.Name()] % len(cands)
 		p.rr[prov.Name()] = (p.rr[prov.Name()] + 1) % max(1, len(cands))
+		p.mu.Unlock()
 		acct := cands[idx]
 		if tried[acct.ID] {
 			// 一圈试完仍全失败

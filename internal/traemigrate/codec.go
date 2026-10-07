@@ -1,4 +1,4 @@
-// Package traemigrate Trae AI 会话库迁移引擎（参考 TraeHop MIT 实现，纯 Go 移植）。
+// Package traemigrate Trae AI 会话库迁移引擎（纯 Go 实现）。
 // Trae 的 ModularData/ai-agent/database.db 是 SQLCipher 加密 SQLite：
 // 4096B 页 = ct[4016] + iv[16] + hmac[64]；页 1 前 16B 为明文 salt；
 // 页密文 AES-256-CBC（无填充），页 MAC = HMAC-SHA512(hmacKey, ct||iv||pgnoLE)，
@@ -95,7 +95,7 @@ func decryptPage(dst, src []byte, pgno int, block cipher.Block) error {
 	} else {
 		copy(dst[0:ctEnd], plain)
 	}
-	// dst[ctEnd:pageSize]（保留区）清零，与 TraeHop out.fill(0) 语义一致
+	// dst[ctEnd:pageSize]（保留区）清零，与参考实现 out.fill(0) 语义一致
 	return nil
 }
 

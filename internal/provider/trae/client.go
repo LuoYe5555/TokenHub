@@ -5,6 +5,7 @@ package trae
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -102,6 +103,9 @@ func ugHeaders(a *store.Account) map[string]string {
 		"User-Agent":     clientUA,
 		"Authorization":  "Cloud-IDE-JWT " + a.AccessToken,
 		"X-User-Region":  "CN",
+		"X-Device-Type":  "Windows",
+		"X-OS-Version":   "10.0.19045",
+		"X-App-Version":  IdeVersion,
 	}
 	if did := a.ExtraGet(store.ExtraTraeDeviceID); did != "" {
 		h["X-Device-Id"] = did
@@ -187,6 +191,7 @@ func (p *Provider) CompleteLogin(ctx context.Context, refreshToken, apiHost, mac
 	if deviceID != "" {
 		acct.ExtraSet(store.ExtraTraeDeviceID, deviceID)
 	}
+	ensureDeviceID(acct) // 登录流未捕获到设备号时补一个（签到/下单接口必需）
 	if uid, nick, ent, uerr := p.GetUserInfo(ctx, token, apiHost); uerr == nil {
 		acct.UID, acct.Nickname, acct.EnterpriseID = uid, nick, ent
 	}
@@ -281,7 +286,56 @@ func (p *Provider) Quota(ctx context.Context, acct *store.Account) (*store.Quota
 
 func (p *Provider) SupportsCheckin(acct *store.Account) bool { return true }
 
+// genDeviceID 生成 16 位数字 deviceId（与真实客户端同格式，44 开头）。
+// 签到/下单接口需要 X-Device-Id，缺失时上游报 9004"下单参数错误"。
+func genDeviceID() string {
+	b := make([]byte, 14)
+	for i := range b {
+		b[i] = byte('0' + rand.Intn(10))
+	}
+	return "44" + string(b)
+}
+
+// ensureDeviceID 给缺 deviceId 的账号补一个（幂等；调用方负责持久化）。
+func ensureDeviceID(a *store.Account) {
+	if strings.TrimSpace(a.ExtraGet(store.ExtraTraeDeviceID)) == "" {
+		a.ExtraSet(store.ExtraTraeDeviceID, genDeviceID())
+	}
+}
+
+// RawCheckinSources 签到相关上游接口的原始响应（面板/探针诊断用）。
+func (p *Provider) RawCheckinSources(ctx context.Context, acct *store.Account) map[string]any {
+	pc := p.cfg.PC(store.PTrae)
+	out := map[string]any{}
+	get := func(key, url string) {
+		var v any
+		if _, err := httpx.DoJSON(ctx, "POST", url, ugHeaders(acct), checkinBody, &v, 30*time.Second); err != nil {
+			out[key] = map[string]any{"error": err.Error()}
+		} else {
+			out[key] = v
+		}
+	}
+	get("checkin_status", ugBase(pc)+epCheckinStatus)
+	return out
+}
+
+// DebugCheckinClaim 实际执行一次签到领取并返回原始响应（诊断 9004 之类用）。
+func (p *Provider) DebugCheckinClaim(ctx context.Context, acct *store.Account) (map[string]any, error) {
+	pc := p.cfg.PC(store.PTrae)
+	var raw map[string]any
+	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), checkinBody, &raw, 30*time.Second); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// checkinBody 与桌面端一致（req_source=1）。
+// 桌面端实测逆向确认：status/claim 空 body 会被上游拒成 9074"当前参与用户太多"。
+var checkinBody = map[string]any{"req_source": 1}
+
+// Checkin 每账号每天一次（上游按账号去重，换设备号也不多加额度）。
 func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, string, error) {
+	ensureDeviceID(acct) // 缺失时补（9004 根因）；调用方随后会落库
 	pc := p.cfg.PC(store.PTrae)
 	var status struct {
 		CheckedIn bool    `json:"checked_in"`
@@ -290,7 +344,7 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 		Code      int64   `json:"code"`
 		Message   string  `json:"message"`
 	}
-	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinStatus, ugHeaders(acct), map[string]any{}, &status, 30*time.Second); err != nil {
+	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinStatus, ugHeaders(acct), checkinBody, &status, 30*time.Second); err != nil {
 		return false, "", err
 	}
 	if status.CheckedIn {
@@ -308,8 +362,22 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 			Message string  `json:"message"`
 		} `json:"data"`
 	}
-	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), map[string]any{}, &claim, 30*time.Second); err != nil {
+	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), checkinBody, &claim, 30*time.Second); err != nil {
 		return false, "", err
+	}
+	// 9074 排队限流：延迟后原地重试一次
+	if claim.Code == 9074 {
+		select {
+		case <-time.After(8 * time.Second):
+		case <-ctx.Done():
+			return false, "", ctx.Err()
+		}
+		if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), checkinBody, &claim, 30*time.Second); err != nil {
+			return false, "", err
+		}
+		if claim.Code == 9074 {
+			return false, "签到排队限流(9074)，已自动重试仍被限流，稍后会自动补签", fmt.Errorf("签到失败(code=9074): 当前参与用户太多，已自动重试一次仍被限流，等下一轮自动补签")
+		}
 	}
 	msg := claim.Message
 	if msg == "" {
@@ -319,10 +387,10 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 	if credits == 0 {
 		credits = claim.Data.Credits
 	}
+	if claim.Code == 9095 || (claim.Code != 0 && claim.Code != 200 && (strings.Contains(msg, "已签到") || strings.Contains(strings.ToLower(msg), "already"))) {
+		return true, "今日已签到", nil
+	}
 	if claim.Code != 0 && claim.Code != 200 {
-		if strings.Contains(msg, "已签到") || strings.Contains(strings.ToLower(msg), "already") {
-			return true, "今日已签到", nil
-		}
 		return false, msg, fmt.Errorf("签到失败(code=%d): %s", claim.Code, msg)
 	}
 	if credits > 0 {

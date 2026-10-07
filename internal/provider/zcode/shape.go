@@ -1,6 +1,8 @@
 package zcode
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,12 @@ import (
 
 	"tokenhub/internal/provider"
 )
+
+// stableSessionHex 由账号 ID 派生的稳定会话标识（16 位 hex，同账号恒定）。
+func stableSessionHex(acctID string) string {
+	sum := md5.Sum([]byte("zcode-session:" + acctID))
+	return hex.EncodeToString(sum[:8])
+}
 
 // planShape 客户端真实流量捕获的请求形状（system 提示词数组 + reminder + metadata）。
 type planShape struct {
@@ -37,7 +45,9 @@ func loadShape() *planShape {
 var dateRe = regexp.MustCompile(`Today's date is [^.]+\.`)
 
 // applyShape 注入客户端请求形状（风控通过票，移植自 CreditDaddy buildPlanRequest）。
-func applyShape(body map[string]any, mode string) {
+// sessionHex 为会话标识（真实客户端在一个会话内保持不变；按账号稳定可提升上游
+// prompt 缓存亲缘，传空则退化为每次随机）。
+func applyShape(body map[string]any, mode, sessionHex string) {
 	s := loadShape()
 	if s == nil || mode == "off" {
 		return
@@ -82,8 +92,11 @@ func applyShape(body map[string]any, mode string) {
 			}}}
 		}
 	}
+	if sessionHex == "" {
+		sessionHex = provider.RandomHex(8)
+	}
 	body["metadata"] = map[string]any{
-		"user_id": fmt.Sprintf(`{"account_uuid":"","session_id":"ses_%s"}`, provider.RandomHex(8)),
+		"user_id": fmt.Sprintf(`{"account_uuid":"","session_id":"ses_%s"}`, sessionHex),
 	}
 }
 
@@ -445,6 +458,9 @@ func StreamAnthropic(r io.Reader, sink provider.Sink) error {
 					usage = &provider.Usage{Present: true}
 					usage.PromptTokens = toInt(u["input_tokens"])
 					usage.CompletionTokens = toInt(u["output_tokens"])
+					usage.CacheReadTokens = toInt(u["cache_read_input_tokens"])
+					usage.CacheWriteTokens = toInt(u["cache_creation_input_tokens"])
+					usage.TotalTokens = usage.BilledTokens()
 				}
 			}
 		case "content_block_start":
@@ -498,7 +514,13 @@ func StreamAnthropic(r io.Reader, sink provider.Sink) error {
 				if in := toInt(u["input_tokens"]); in > 0 {
 					usage.PromptTokens = in
 				}
-				usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+				if v := toInt(u["cache_read_input_tokens"]); v > 0 {
+					usage.CacheReadTokens = v
+				}
+				if v := toInt(u["cache_creation_input_tokens"]); v > 0 {
+					usage.CacheWriteTokens = v
+				}
+				usage.TotalTokens = usage.BilledTokens()
 			}
 		case "message_stop":
 			return false
@@ -516,9 +538,16 @@ func StreamAnthropic(r io.Reader, sink provider.Sink) error {
 		return true
 	})
 	if err != nil {
+		// 传输中断：上游可能已计费（message_start 已收到），把已抓到的 usage 带回去
+		if usage != nil && usage.Present {
+			sink.Finish(provider.Finish{Usage: usage})
+		}
 		return err
 	}
 	if streamErr != nil {
+		if usage != nil && usage.Present {
+			sink.Finish(provider.Finish{Usage: usage})
+		}
 		return streamErr
 	}
 	if stopReason == "" {

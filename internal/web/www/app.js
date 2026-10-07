@@ -7,9 +7,10 @@ const I18N = {
     nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_logs: '运行日志', nav_settings: '设置',
     usage_title: '用量与占比', usage_sub: '账号额度余量与最近调用分布（本地环形日志，最多 500 条）',
     usage_today: '今日 tokens', usage_week: '近 7 天 tokens', usage_requests: '总请求数', usage_tracked: '统计自',
+    usage_cache_hit: '缓存命中', usage_cache_read: '缓存读', usage_cache_write: '缓存写', usage_cache_short: '缓存', usage_in: '输入', usage_out: '输出',
     usage_quota_title: '账号额度与占比',
     usage_by_caller: '按调用方', usage_by_provider: '按提供商', usage_by_model: '按模型（Top 8）',
-    usage_owner: '主人（主 Key）', usage_no_quota: '暂无额度快照，点账号「查额度」后展示',
+    usage_owner: '主人（主 Key）', usage_no_quota: '暂无额度快照，点账号「查额度」后展示', usage_total: '共',
     usage_until: '到期', usage_req_unit: ' 次', usage_empty: '暂无调用记录',
     usage_reload: '刷新', usage_reloading: '刷新中…',
     dash_title: '总览', dash_sub: '账号额度与接口状态一览',
@@ -112,7 +113,8 @@ const I18N = {
     mig_done: '迁移完成：迁入 {migrated} 个会话（目标原生 {native} 个），已切换登录。',
     mig_fail: '迁移失败',
     zc_plans: '可领取活动', zc_claim: '领取', zc_no_plans: '当前没有可领取的活动', zc_claiming: '领取中…',
-    zc_claim_ok: '领取成功', zc_captcha_title: '安全验证', zc_captcha_hint: '该活动需要滑块验证，完成验证后将自动重试领取', zc_captcha_load_fail: '验证码组件加载失败，请检查网络后重试', zc_captcha_retry: '重试',
+    zc_claim_ok: '领取成功', zc_claim_already: '之前已领取，无需重复', zc_captcha_title: '安全验证', zc_captcha_hint: '该活动需要滑块验证，完成验证后将自动重试领取', zc_captcha_load_fail: '验证码组件加载失败，请检查网络后重试', zc_captcha_retry: '重试',
+    zc_auto_claim: '🤖 一键自动领取', zc_auto_running: '自动滑块验证中，请勿移动鼠标…', zc_auto_fail: '自动滑块未通过，请手动完成验证',
     zc_pending_title: '有 {n} 个活动待验证领取（自动领取遇到滑块验证）', set_zcode_shape_hint: 'overwrite=用客户端请求形状整体替换 system（实测最稳）；prepend=前置注入；off=不注入',
     /* 设置项 */
     set_listen_host: '监听地址', set_listen_host_d: '127.0.0.1 仅本机可用；0.0.0.0 允许局域网（需重启）',
@@ -142,9 +144,10 @@ const I18N = {
     nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_logs: 'Logs', nav_settings: 'Settings',
     usage_title: 'Usage & Quotas', usage_sub: 'Account quota remainder and recent call distribution (local ring buffer, max 500 entries)',
     usage_today: 'Today tokens', usage_week: '7-day tokens', usage_requests: 'Total requests', usage_tracked: 'from',
+    usage_cache_hit: 'Cache hit', usage_cache_read: 'cache read', usage_cache_write: 'cache write', usage_cache_short: 'cache', usage_in: 'in', usage_out: 'out',
     usage_quota_title: 'Account quota & ratio',
     usage_by_caller: 'By caller', usage_by_provider: 'By provider', usage_by_model: 'By model (Top 8)',
-    usage_owner: 'Owner (master key)', usage_no_quota: 'No quota snapshot yet; click "Quota" on an account first',
+    usage_owner: 'Owner (master key)', usage_no_quota: 'No quota snapshot yet; click "Quota" on an account first', usage_total: 'total',
     usage_until: 'until', usage_req_unit: ' req', usage_empty: 'No calls recorded',
     usage_reload: 'Refresh', usage_reloading: 'Refreshing…',
     dash_title: 'Dashboard', dash_sub: 'Account quotas and API status at a glance',
@@ -246,7 +249,8 @@ const I18N = {
     mig_done: 'Done: migrated {migrated} sessions (target native {native}), login switched.',
     mig_fail: 'Migration failed',
     zc_plans: 'Claimable campaigns', zc_claim: 'Claim', zc_no_plans: 'No claimable campaign right now', zc_claiming: 'Claiming…',
-    zc_claim_ok: 'Claimed', zc_captcha_title: 'Security check', zc_captcha_hint: 'This campaign requires a slider captcha; claiming retries automatically after verification', zc_captcha_load_fail: 'Failed to load captcha component, check your network and retry', zc_captcha_retry: 'Retry',
+    zc_claim_ok: 'Claimed', zc_claim_already: 'Already claimed earlier, no need to repeat', zc_captcha_title: 'Security check', zc_captcha_hint: 'This campaign requires a slider captcha; claiming retries automatically after verification', zc_captcha_load_fail: 'Failed to load captcha component, check your network and retry', zc_captcha_retry: 'Retry',
+    zc_auto_claim: '🤖 Auto claim', zc_auto_running: 'Auto sliding, please do not move the mouse…', zc_auto_fail: 'Auto slide failed; please finish it manually',
     zc_pending_title: '{n} campaign(s) awaiting slider verification (auto-claim hit captcha)', set_zcode_shape_hint: 'overwrite=replace system with client request shape (most reliable); prepend=prepend; off=disable',
     set_listen_host: 'Listen host', set_listen_host_d: '127.0.0.1 for local only; 0.0.0.0 for LAN (restart required)',
     set_listen_port: 'Port', set_api_key: 'API Key', set_regen_key: 'Regenerate',
@@ -341,7 +345,7 @@ async function copyText(text) {
 async function zcClaim(a, planId, captchaParam, region) {
   try {
     const res = await post('/api/panel/zcode/claim', { id: a.id, planId, captchaParam, region });
-    toast((res.planName || planId) + ' · ' + t('zc_claim_ok'));
+    toast((res.planName || planId) + ' · ' + (res.already ? t('zc_claim_already') : t('zc_claim_ok')));
     await loadOverview();
     return 'ok';
   } catch (e) {
@@ -375,43 +379,120 @@ function loadAliyunCaptcha() {
   });
 }
 
-// zcCaptchaModal 渲染阿里云滑块验证码（官方 SDK，popup 模式），人工通过后带参重试领取。
-async function zcCaptchaModal(a, planId, cfg) {
+// zcCaptchaModal 渲染阿里云滑块验证码（官方 SDK，popup 模式），通过后带参重试领取。
+// auto=true 时先尝试 SendInput 自动滑块（仅窗口模式），失败回落手动。
+// 同账号同活动同时只允许一个弹窗：定时任务派发的弹窗与手动领取弹窗可能撞车，
+// 后开的不重复弹（复用同一 Promise），关窗时自动清理。
+// 返回 Promise<{ok:boolean}>。
+function zcCaptchaModal(a, planId, cfg, auto) {
+  const key = ((a && a.id) || '') + '|' + planId;
+  window._zcCaptchaModals = window._zcCaptchaModals || {};
+  if (window._zcCaptchaModals[key]) return window._zcCaptchaModals[key];
+  const pr = zcCaptchaModalRun(a, planId, cfg, auto);
+  window._zcCaptchaModals[key] = pr;
+  const cleanup = () => { delete window._zcCaptchaModals[key]; };
+  pr.then(cleanup, cleanup);
+  return pr;
+}
+
+function zcCaptchaModalRun(a, planId, cfg, auto) {
   const pick = (...keys) => { for (const k of keys) { if (cfg[k]) return cfg[k]; } return ''; };
   const scene = pick('sceneId', 'SceneId', 'scene', 'scene_id');
   const prefix = pick('prefix', 'Prefix') || 'aliyunCaptcha';
   const region = pick('region', 'Region', 'captchaRegion');
-  showModal(t('zc_captcha_title'), `
-    <div style="margin-bottom:10px">${t('zc_captcha_hint')}</div>
-    <div id="captcha-element"></div>
-    <div class="foot"><button id="captcha-button">${t('zc_claim')}</button></div>
-    <div id="captchaErr" style="display:none;text-align:center;padding:6px 0">
-      <span id="captchaErrMsg" style="color:var(--danger,#e5615c);font-size:13px"></span>
-      <button class="sm" id="captchaRetry" style="margin-left:8px">${t('zc_captcha_retry')}</button>
-    </div>`);
-  const boot = async () => {
-    $('#captchaErr').style.display = 'none';
-    try {
-      await loadAliyunCaptcha();
-      window.initAliyunCaptcha({
-        SceneId: scene, prefix, region, mode: 'popup',
-        element: '#captcha-element', button: '#captcha-button',
-        captchaVerifyCallback: async (captchaVerifyParam) => {
-          const r = await zcClaim(a, planId, captchaVerifyParam, region);
-          if (r === 'ok') closeModal();
-          return { captchaResult: r === 'ok', bizResult: r === 'ok' };
-        },
-        onBizResultCallback: () => {},
-        getInstance: (ins) => { window._zcCaptcha = ins; },
-      });
-    } catch (e) {
-      $('#captchaErrMsg').textContent = t('zc_captcha_load_fail') + (e && e.message ? '（' + e.message + '）' : '');
-      $('#captchaErr').style.display = 'block';
-    }
-  };
-  $('#captchaRetry').addEventListener('click', boot);
-  await boot();
+  return new Promise(async (resolve) => {
+    showModal(t('zc_captcha_title'), `
+      <div style="margin-bottom:10px" id="captchaHint">${t('zc_captcha_hint')}</div>
+      <div id="captcha-element"></div>
+      <div class="foot"><button id="captcha-button">${t('zc_claim')}</button></div>
+      <div id="captchaErr" style="display:none;text-align:center;padding:6px 0">
+        <span id="captchaErrMsg" style="color:var(--danger,#e5615c);font-size:13px"></span>
+        <button class="sm" id="captchaRetry" style="margin-left:8px">${t('zc_captcha_retry')}</button>
+      </div>`);
+    const finish = (ok) => { closeModal(); resolve({ ok }); };
+    const hint = (msg) => { const el = $('#captchaHint'); if (el) el.textContent = msg; };
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const findCaptchaIframe = () => {
+      for (const f of document.querySelectorAll('iframe')) {
+        if (/captcha|aliyun/i.test(f.src || '')) return f;
+      }
+      return null;
+    };
+    // autoSlideOnce：点开弹窗 → 定位滑块 iframe → 算屏幕物理坐标 → 后端 SendInput 拟人拖拽
+    const autoSlideOnce = async () => {
+      let ifr = findCaptchaIframe();
+      if (!ifr) {
+        const btn = $('#captcha-button');
+        if (btn) btn.click();
+        for (let k = 0; k < 20 && !ifr; k++) { await sleep(250); ifr = findCaptchaIframe(); }
+      }
+      if (!ifr) return false;
+      const r = ifr.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const x1 = Math.round((window.screenX + r.left + Math.max(24, r.width * 0.1)) * dpr);
+      const y1 = Math.round((window.screenY + r.top + r.height * 0.5) * dpr);
+      const x2 = Math.round((window.screenX + r.left + r.width - Math.max(26, r.width * 0.1)) * dpr);
+      window._zcSlideDone = null;
+      try { await post('/api/panel/zcode/slider-rect', { x1, y1, x2, y2: y1 }); } catch { return false; }
+      for (let k = 0; k < 40; k++) { await sleep(250); if (window._zcSlideDone !== null) break; }
+      return window._zcSlideDone === true;
+    };
+    const tryAutoSlide = async () => {
+      hint(t('zc_auto_running'));
+      for (let i = 0; i < 3; i++) {
+        if (await autoSlideOnce()) return true;
+        await sleep(1200); // SDK 会自动刷新出新的滑块
+      }
+      hint(t('zc_auto_fail'));
+      return false;
+    };
+    const boot = async () => {
+      $('#captchaErr').style.display = 'none';
+      try {
+        await loadAliyunCaptcha();
+        window.initAliyunCaptcha({
+          SceneId: scene, prefix, region, mode: 'popup',
+          element: '#captcha-element', button: '#captcha-button',
+          captchaVerifyCallback: async (captchaVerifyParam) => {
+            const r = await zcClaim(a, planId, captchaVerifyParam, region);
+            const ok = r === 'ok';
+            window._zcSlideDone = ok;
+            if (ok) finish(true);
+            return { captchaResult: ok, bizResult: ok };
+          },
+          onBizResultCallback: () => {},
+          getInstance: (ins) => { window._zcCaptcha = ins; },
+        });
+        if (auto) { setTimeout(() => { tryAutoSlide(); }, 400); }
+      } catch (e) {
+        $('#captchaErrMsg').textContent = t('zc_captcha_load_fail') + (e && e.message ? '（' + e.message + '）' : '');
+        $('#captchaErr').style.display = 'block';
+      }
+    };
+    $('#captchaRetry').addEventListener('click', boot);
+    await boot();
+  });
 }
+
+// zcAutoClaimPending 全自动领取：遍历待办（自动领取撞验证码的），逐个自动滑块。
+// 后端撞到 3007 时会通过 webview 调用这里；横幅上的「🤖 一键自动领取」也走这里。
+window.zcAutoClaimPending = async function () {
+  if (window._zcAutoRunning) return;
+  window._zcAutoRunning = true;
+  try {
+    const pend = await api('/api/panel/zcode/pending');
+    for (const p of (pend.pending || [])) {
+      try {
+        // 开弹窗前再确认一次仍在待办（用户可能已在活动列表手动领掉），避免无谓弹滑块
+        const now = await api('/api/panel/zcode/pending');
+        if (!(now.pending || []).some(x => x.accountId === p.accountId && x.planId === p.planId)) continue;
+        const cc = await api(`/api/panel/zcode/captcha-config?id=${encodeURIComponent(p.accountId)}`);
+        await zcCaptchaModal({ id: p.accountId }, p.planId, cc.captcha || {}, true);
+      } catch (e) { /* 单个失败继续下一个 */ }
+    }
+    await loadOverview();
+  } finally { window._zcAutoRunning = false; }
+};
 
 // migrateSessionsModal Trae AI 会话迁移：密钥设置 → 启动 → 实时日志。
 async function migrateSessionsModal(a) {
@@ -488,7 +569,7 @@ async function zcPlansModal(a) {
         resetBtn(btn);
         try {
           const cc = await api(`/api/panel/zcode/captcha-config?id=${encodeURIComponent(a.id)}`);
-          await zcCaptchaModal(a, planId, cc.captcha || {});
+          await zcCaptchaModal(a, planId, cc.captcha || {}, !!(overview && overview.webviewWindow));
         } catch (e) {
           toast(t('zc_captcha_load_fail'), true);
         }
@@ -563,7 +644,8 @@ async function loadUsage() {
   const tks = d.tokens || {};
   $('#usageCards').innerHTML = `
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_today')}</div>
-      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.today)}</div></div>
+      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.today)}</div>
+      <div style="opacity:.5;font-size:11px">${tks.todayReqs || 0} ${t('usage_req_unit').trim()}${tks.cacheHit ? ' · ' + t('usage_cache_hit') + ' ' + Math.round(tks.cacheHit * 100) + '%' : ''}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_week')}</div>
       <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
@@ -687,7 +769,12 @@ $('#btnReloadUsage').addEventListener('click', async () => {
   btn.dataset.busy = '1';
   const old = btn.textContent;
   btn.textContent = t('usage_reloading');
-  try { await loadUsage(); } finally {
+  try {
+    // 先从上游拉一遍全部额度快照（与总览页「刷新全部额度」同源），再渲染用量页
+    try { await post('/api/panel/refresh-quotas'); } catch {}
+    await loadUsage();
+    await loadUsageLog();
+  } finally {
     btn.textContent = old;
     delete btn.dataset.busy;
   }
@@ -732,14 +819,24 @@ async function renderZcodePending(box) {
   el.className = 'card';
   el.style.cssText = 'border:1px solid var(--danger,#e5615c);margin-bottom:12px';
   el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
       <b style="color:var(--danger,#e5615c)">🔔 ${t('zc_pending_title').replace('{n}', list.length)}</b>
+      <button class="sm primary" id="zcAutoAll">${t('zc_auto_claim')}</button>
     </div>` + list.map((p, i) => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--border,#333)">
       <div style="font-size:13px">${esc(p.planName || p.planId)} <span style="opacity:.55">· ${esc(p.accountName)}</span></div>
       <button class="sm primary" data-pend-claim="${i}">${t('zc_claim')}</button>
     </div>`).join('');
   box.appendChild(el);
+  $('#zcAutoAll').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    b.textContent = t('zc_auto_running');
+    try { await window.zcAutoClaimPending(); } finally {
+      b.disabled = false;
+      b.textContent = t('zc_auto_claim');
+    }
+  });
   el.querySelectorAll('[data-pend-claim]').forEach((btn, i) => {
     btn.addEventListener('click', async () => {
       const p = list[i];
@@ -747,7 +844,7 @@ async function renderZcodePending(box) {
       btn.textContent = t('zc_claiming');
       try {
         const cc = await api(`/api/panel/zcode/captcha-config?id=${encodeURIComponent(p.accountId)}`);
-        await zcCaptchaModal({ id: p.accountId }, p.planId, cc.captcha || {});
+        await zcCaptchaModal({ id: p.accountId }, p.planId, cc.captcha || {}, !!(overview && overview.webviewWindow));
       } catch (e) { toast(t('zc_captcha_load_fail'), true); }
       btn.disabled = false;
       btn.textContent = t('zc_claim');
@@ -1080,9 +1177,8 @@ function manualModal(provider) {
     <div class="field"><label>${t('manual_refresh')}</label><input type="text" id="mRefresh"></div>
     <div class="field"><label>${t('manual_uid')}</label><input type="text" id="mUid"></div>
     <div class="field"><label>${t('manual_nick')}</label><input type="text" id="mNick"></div>
-    <div class="foot"><button id="mCancel">${t('cancel')}</button><button class="primary" id="mSave">${t('save')}</button></div>
+    <button class="primary" id="mSave">${t('save')}</button>
   `);
-  $('#mCancel').addEventListener('click', closeModal);
   $('#mSave').addEventListener('click', async () => {
     try {
       await post('/api/panel/account', {
@@ -1313,8 +1409,25 @@ async function pollUsage() {
 setInterval(pollUsage, 10000);
 
 /* ── 用量日志 ── */
+let usageLogPage = 1, usageLogPages = 1;
 async function loadUsageLog() {
-  try { const d = await api('/api/panel/usage'); renderUsageLog(d.entries || []); } catch {}
+  try {
+    const d = await api(`/api/panel/usage?page=${usageLogPage}&page_size=15`);
+    const total = d.total || 0, size = d.pageSize || 15;
+    usageLogPages = Math.max(1, Math.ceil(total / size));
+    if (usageLogPage > usageLogPages) { usageLogPage = usageLogPages; return loadUsageLog(); }
+    renderUsageLog(d.entries || []);
+    const pager = $('#usagePager');
+    if (pager) {
+      pager.style.display = total > size ? 'flex' : 'none';
+      pager.innerHTML = `
+        <button class="sm" id="ulPrev" ${usageLogPage <= 1 ? 'disabled' : ''}>‹</button>
+        <span style="opacity:.65;font-size:12px;padding:0 6px">${usageLogPage} / ${usageLogPages} · ${t('usage_total')} ${total}</span>
+        <button class="sm" id="ulNext" ${usageLogPage >= usageLogPages ? 'disabled' : ''}>›</button>`;
+      $('#ulPrev')?.addEventListener('click', () => { if (usageLogPage > 1) { usageLogPage--; loadUsageLog(); } });
+      $('#ulNext')?.addEventListener('click', () => { if (usageLogPage < usageLogPages) { usageLogPage++; loadUsageLog(); } });
+    }
+  } catch {}
 }
 function renderUsageLog(list) {
   const tb = $('#usageList'); if (!tb) return;
@@ -1326,7 +1439,12 @@ function renderUsageLog(list) {
   tb.innerHTML = list.length ? list.map(u => {
     const time = new Date(u.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
     const caller = u.caller ? esc(u.caller) : t('usage_owner');
-    const tok = u.totalTokens ? `${fmtNum(u.totalTokens)} <span style="color:var(--muted)">(${fmtNum(u.promptTokens)}+${fmtNum(u.completionTokens)})</span>` : '-';
+    const cr = u.cacheReadTokens || 0, cw = u.cacheWriteTokens || 0;
+    const hit = (u.promptTokens + cr + cw) > 0 ? Math.round(cr / (u.promptTokens + cr + cw) * 100) : 0;
+    const detail = `${t('usage_in')} ${fmtNum(u.promptTokens || 0)} · ${t('usage_cache_read')} ${fmtNum(cr)} · ${t('usage_cache_write')} ${fmtNum(cw)} · ${t('usage_out')} ${fmtNum(u.completionTokens || 0)}${(u.promptTokens + cr + cw) > 0 ? ' · ' + t('usage_cache_hit') + ' ' + hit + '%' : ''}`;
+    const tok = u.totalTokens
+      ? `<span title="${esc(detail)}" style="cursor:help">${fmtNum(u.totalTokens)} <span style="color:var(--muted)">(${fmtNum(u.promptTokens)}+${fmtNum(u.completionTokens)}${(cr || cw) ? ` +${t('usage_cache_short')} ${fmtNum(cr + cw)}` : ''})</span>${(cr || cw) ? ` <span style="color:var(--ok,#3ad98a)" title="${esc(detail)}">${hit}%</span>` : ''}</span>`
+      : '-';
     const st = u.ok
       ? `<span style="color:var(--ok, #3ad98a)">${t('usage_ok')}</span>`
       : `<span style="color:var(--danger, #ff6b6b)" title="${esc(u.errMsg || '')}">${t('usage_fail')}</span>`;
@@ -1341,7 +1459,7 @@ function renderUsageLog(list) {
     </tr>`;
   }).join('') : `<tr><td colspan="7" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
 }
-setInterval(loadUsageLog, 10000);
+setInterval(() => { if (usageLogPage === 1) loadUsageLog(); }, 10000);
 
 const SHARE_PROVS = ['workbuddy', 'trae', 'zcode'];
 function shareLimitLabel(pv) {

@@ -97,7 +97,7 @@ func (j *Job) finish(res *Result) {
 }
 
 // StartMigrate 启动一次会话迁移（异步；进度用 JobStatus 轮询）。
-// 流程与 TraeHop 一致：解密 → 合并 WAL → 迁移 SQL → 重加密 → 回验 → 写回 → 切号重启。
+// 流程：解密 → 合并 WAL → 迁移 SQL → 重加密 → 回验 → 写回 → 切号重启。
 func StartMigrate(target *store.Account, dataDir, keyHex string) error {
 	if !globalJob.start() {
 		return fmt.Errorf("已有迁移任务在进行中")

@@ -1,5 +1,5 @@
 // Package traeswitch 本机 Trae 客户端登录一键切换。
-// 思路参考 TraeHop（MIT）：杀 IDE → 备份 storage.json → 回写目标账号的
+// 思路：杀 IDE → 备份 storage.json → 回写目标账号的
 // tc 登录信封 + 每账号恒定设备指纹 → 清理登录态缓存 → 重启 IDE。
 // 切换前由调用方先 Snapshot 保存当前登录会话到对应账号，保证来回切不丢会话。
 package traeswitch
@@ -18,6 +18,7 @@ import (
 
 	"tokenhub/internal/localimport"
 	"tokenhub/internal/store"
+	"tokenhub/internal/winproc"
 )
 
 // traeAppNames IDE 进程/数据目录名（与 localimport.traeAppNames 保持一致）。
@@ -115,7 +116,7 @@ func Apply(acct *store.Account) (string, error) {
 		storage[localimport.TraeServerKeyX] = serverEnv
 	}
 	delete(storage, localimport.TraeUsertagKey)
-	// 遥测指纹随 machineId 走（与 TraeHop applyTelemetryIds 一致）
+	// 遥测指纹随 machineId 走（与同类工具 applyTelemetryIds 一致）
 	storage["telemetry.machineId"] = telemetryMachineID(machineID)
 	storage["telemetry.sqmId"] = "{" + strings.ToUpper(uuid()) + "}"
 	storage["telemetry.devDeviceId"] = uuid()
@@ -130,7 +131,7 @@ func Apply(acct *store.Account) (string, error) {
 	return machineID, nil
 }
 
-// telemetryMachineID 与 TraeHop md5TelemetryId 一致：
+// telemetryMachineID 与同类工具 md5TelemetryId 一致：
 // sha256(id)[0:8] || sha256(id+hex(sha256(id)))[0:8] 的 hex。
 func telemetryMachineID(id string) string {
 	h1 := sha256.Sum256([]byte(id))
@@ -157,7 +158,7 @@ func KillIDE() { killTrae() }
 
 func traeRunning() bool {
 	for _, name := range traeAppNames {
-		out, err := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/NH").Output()
+		out, err := winproc.Cmd("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/NH").Output()
 		if err == nil && strings.Contains(string(out), name+".exe") {
 			return true
 		}
@@ -170,12 +171,12 @@ func killTrae() {
 		return
 	}
 	for _, name := range traeAppNames {
-		_ = exec.Command("taskkill", "/IM", name+".exe").Run()
+		_ = winproc.Cmd("taskkill", "/IM", name+".exe").Run()
 	}
 	time.Sleep(1500 * time.Millisecond)
 	if traeRunning() {
 		for _, name := range traeAppNames {
-			_ = exec.Command("taskkill", "/F", "/IM", name+".exe").Run()
+			_ = winproc.Cmd("taskkill", "/F", "/IM", name+".exe").Run()
 		}
 		time.Sleep(500 * time.Millisecond)
 	}

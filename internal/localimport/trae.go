@@ -247,7 +247,7 @@ func SynthAuthEnvelope(token, refreshToken, uid, nickname, email, host string) (
 	return tcSeal(raw)
 }
 
-// SynthEntEnvelope 合成 Free 档权益信封（与 TraeHop buildEntitlementInfo 一致）。
+// SynthEntEnvelope 合成 Free 档权益信封（与同类工具 buildEntitlementInfo 一致）。
 func SynthEntEnvelope() (string, error) {
 	ent := map[string]any{
 		"identityStr": "Free", "identity": 0, "isPayFreshman": false,
