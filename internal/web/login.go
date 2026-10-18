@@ -422,6 +422,10 @@ func (p *Panel) handleZcodeImportLocal(w http.ResponseWriter, r *http.Request) {
 func (p *Panel) handleImportLocalWB(w http.ResponseWriter, r *http.Request) {
 	accts := localimport.WorkBuddyLocal()
 	if len(accts) == 0 {
+		if localimport.WorkBuddyHasEncrypted() {
+			writeErr(w, 400, "检测到本机国际版登录，但会话已加密且未能解密：请先打开 WorkBuddy 国际版客户端（登录状态保持），再点一次「本机导入」——解密密钥需从运行中的客户端内存找回；仍失败请改用「打开授权页面」授权登录")
+			return
+		}
 		writeErr(w, 400, "未在本机找到 WorkBuddy / CodeBuddy 登录（%LOCALAPPDATA%\\CodeBuddyExtension\\Data\\Public\\auth）")
 		return
 	}

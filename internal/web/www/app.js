@@ -103,6 +103,7 @@ const I18N = {
     login_zc_s2: '2. 授权完成后本面板会自动获取凭据（最多等 10 分钟）。',
     import_local_desc: '读取本机 ZCode 客户端（~/.zcode/v2/credentials.json）当前登录的账号，解密后导入。适合快速导入已在 ZCode 登录的账号。',
     import_local_ok: '本机导入成功', import_local_none: '未检测到本机登录',
+    import_wb_decrypting: '正在读取本机会话（国际版需从运行中的客户端找回解密密钥，约 1 分钟，请勿关闭客户端）…',
     import_wb_btn: '从本机 CodeBuddy 导入', import_trae_btn: '从本机 Trae 导入',
     manual_title: '手动导入凭据', manual_provider: '提供商', manual_realm: '渠道（workbuddy: cn/global；zcode: bigmodel/zai）',
     manual_access: 'AccessToken（ZCode 填 zcode JWT）', manual_refresh: 'RefreshToken（可选，trae/workbuddy 可自动续期）',
@@ -258,6 +259,7 @@ const I18N = {
     login_zc_s2: '2. Credentials are fetched automatically once authorized (up to 10 min).',
     import_local_desc: 'Reads the currently logged-in account of the local ZCode client (~/.zcode/v2/credentials.json), decrypts and imports it.',
     import_local_ok: 'Imported from local client', import_local_none: 'No local login detected',
+    import_wb_decrypting: 'Reading local sessions (intl edition needs the running client to recover the decryption key, ~1 min — keep the client open)…',
     import_wb_btn: 'Import from local CodeBuddy', import_trae_btn: 'Import from local Trae',
     manual_title: 'Manual import', manual_provider: 'Provider', manual_realm: 'Realm (workbuddy: cn/global; zcode: bigmodel/zai)',
     manual_access: 'AccessToken (ZCode: zcode JWT)', manual_refresh: 'RefreshToken (optional; trae/workbuddy auto-renew)',
@@ -1112,12 +1114,19 @@ function addModalWB() {
     <button class="ghost sm" id="wbManual" style="margin-left:8px">${t('acct_manual')}</button>
   `);
   $('#wbLocal').addEventListener('click', async () => {
+    const btn = $('#wbLocal');
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    btn.disabled = true;
+    $('#wbStatus').textContent = t('import_wb_decrypting');
     try {
       const r = await post('/api/panel/import-local/workbuddy');
       $('#wbStatus').textContent = `${t('import_local_ok')} +${r.added}（发现 ${r.found}）`;
       toast(t('import_local_ok'));
       loadOverview();
     } catch (e) { $('#wbStatus').textContent = e.message; }
+    delete btn.dataset.busy;
+    btn.disabled = false;
   });
   $('#wbGo').addEventListener('click', async () => {
     const realm = $('#wbRealm').value;

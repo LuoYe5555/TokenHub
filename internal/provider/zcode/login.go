@@ -32,7 +32,8 @@ func LoginStart(providerKind string) (*LoginSession, error) {
 	if p != "zai" && p != "bigmodel" {
 		p = "bigmodel"
 	}
-	pollToken := strings.ToLower(store.NewID()) + strings.ToLower(store.NewID())
+	// 上游已校验 pollToken 格式：需 64 位 hex（与真实 ZCode CLI 一致，32 位会被回 invalid_flow）
+	pollToken := strings.ToLower(store.NewID() + store.NewID() + store.NewID() + store.NewID())
 	var out struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`

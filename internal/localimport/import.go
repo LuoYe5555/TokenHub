@@ -66,15 +66,49 @@ func workbuddyAuthDir() string {
 	return filepath.Join(local, "CodeBuddyExtension", "Data", "Public", "auth")
 }
 
+// WorkBuddyHasEncrypted 检测 auth 目录是否存在被新版客户端加密的会话
+// （auth.accessToken 变为 {"$wbEncrypted":1,"envelope":...} 信封结构，国际版 2026-10 起实测）。
+// 命中时提示用户改走「打开授权页面」设备授权登录。
+func WorkBuddyHasEncrypted() bool {
+	dir := workbuddyAuthDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(name), ".info") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(b), `"wbEncrypted"`) {
+			return true
+		}
+	}
+	return false
+}
+
 // WorkBuddyLocal 扫描本机会话文件（当前 + 历史会话）。
+// 支持两种形态：旧版明文 accessToken/refreshToken 字符串；新版客户端（国际版 2026-10 起）
+// 的 {"$wbEncrypted":1,"envelope":...} 信封——后者通过扫描运行中客户端进程内存找回
+// 密钥后解密（keyId=sha256(key) 前16位强校验，只读自身登录态）。
 func WorkBuddyLocal() []*store.Account {
 	dir := workbuddyAuthDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	seen := map[string]bool{}
-	var out []*store.Account
+	// 第一遍：收集文件与加密 keyId
+	type wbFile struct {
+		path    string
+		account map[string]json.RawMessage
+		auth    map[string]json.RawMessage
+	}
+	var files []wbFile
+	wantKeys := map[string]bool{}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(strings.ToLower(name), ".info") {
@@ -85,52 +119,76 @@ func WorkBuddyLocal() []*store.Account {
 			continue
 		}
 		var session struct {
-			Account struct {
-				UID          string `json:"uid"`
-				Nickname     string `json:"nickname"`
-				EnterpriseID string `json:"enterpriseId"`
-				Email        string `json:"email"`
-			} `json:"account"`
-			Auth struct {
-				AccessToken  string `json:"accessToken"`
-				RefreshToken string `json:"refreshToken"`
-				ExpiresAt    int64  `json:"expiresAt"`
-				Domain       string `json:"domain"`
-			} `json:"auth"`
+			Account map[string]json.RawMessage `json:"account"`
+			Auth    map[string]json.RawMessage `json:"auth"`
 		}
 		if json.Unmarshal(b, &session) != nil {
 			continue
 		}
-		if strings.TrimSpace(session.Auth.AccessToken) == "" {
-			continue
+		files = append(files, wbFile{path: filepath.Join(dir, name), account: session.Account, auth: session.Auth})
+		for _, group := range []map[string]json.RawMessage{session.Auth, session.Account} {
+			for _, raw := range group {
+				if f, ok := wbAsEncrypted(raw); ok {
+					if env, err := wbDecodeEnvelope(f.Envelope); err == nil && env.KeyID != "" {
+						wantKeys[env.KeyID] = true
+					}
+				}
+			}
 		}
-		uid := session.Account.UID
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	keys := map[string][]byte{}
+	if len(wantKeys) > 0 {
+		keys = wbScanProtectorKeys(mapKeys(wantKeys))
+	}
+
+	seen := map[string]bool{}
+	var out []*store.Account
+	for _, f := range files {
+		uid := wbPlainString(f.account["uid"])
 		if uid == "" {
+			uid = wbPlainString(f.account["userId"])
+		}
+		if uid == "" || seen[uid] {
 			continue
 		}
-		if seen[uid] {
+		accessToken, okA := wbFieldString(f.auth["accessToken"], keys)
+		refreshToken, _ := wbFieldString(f.auth["refreshToken"], keys)
+		if !okA || accessToken == "" {
 			continue
 		}
 		seen[uid] = true
+		domain := wbPlainString(f.auth["domain"])
 		realm := "cn"
-		domain := strings.ToLower(session.Auth.Domain)
-		if strings.Contains(domain, "workbuddy.ai") || strings.Contains(domain, "codebuddy.ai") {
+		d := strings.ToLower(domain)
+		if strings.Contains(d, "workbuddy.ai") || strings.Contains(d, "codebuddy.ai") {
 			realm = "global"
 		}
 		acct := &store.Account{
 			Realm:        realm,
 			UID:          uid,
-			Nickname:     session.Account.Nickname,
-			Email:        session.Account.Email,
-			AccessToken:  session.Auth.AccessToken,
-			RefreshToken: session.Auth.RefreshToken,
-			Domain:       session.Auth.Domain,
-			EnterpriseID: session.Account.EnterpriseID,
+			Nickname:     wbFieldStringOr(f.account["nickname"], keys, ""),
+			Email:        wbPlainString(f.account["email"]),
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+			Domain:       domain,
+			EnterpriseID: wbPlainString(f.account["enterpriseId"]),
 		}
-		if exp := normalizeMs(session.Auth.ExpiresAt); exp > 0 {
+		if exp := normalizeMs(wbPlainInt(f.auth["expiresAt"])); exp > 0 {
 			acct.ExpiresAt = exp
 		}
 		out = append(out, acct)
+	}
+	return out
+}
+
+// mapKeys map 键列表
+func mapKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
 	return out
 }
