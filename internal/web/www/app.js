@@ -706,7 +706,6 @@ let cfgData = null;
 async function loadOverview() {
   try {
     overview = await api('/api/panel/overview');
-    $('#verLine').textContent = 'TokenHub v' + overview.version;
     $('#dashBase').value = `http://127.0.0.1:${overview.port}/v1`;
     apiBaseURL = `http://127.0.0.1:${overview.port}`;
     $('#apiBase').value = apiBaseURL;
