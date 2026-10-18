@@ -155,9 +155,8 @@ func (p *Provider) SyncFromLocal(acct *store.Account) error {
 	if l.ExpiresAt > 0 {
 		acct.ExpiresAt = l.ExpiresAt
 	}
-	if did := l.ExtraGet(store.ExtraTraeDeviceID); did != "" {
-		acct.ExtraSet(store.ExtraTraeDeviceID, did)
-	}
+	// 注意：不复制本机设备号——账号的 deviceId 是导入时随机生成的独立指纹，
+	// 被风控拉黑也只烧随机号，绝不牵连本机 IDE 的真实机器码。
 	acct.Dead = false
 	acct.DeadReason = ""
 	return nil
@@ -365,18 +364,40 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 	if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), checkinBody, &claim, 30*time.Second); err != nil {
 		return false, "", err
 	}
-	// 9074 排队限流：延迟后原地重试一次
-	if claim.Code == 9074 {
+	// 9074 排队限流：梯度退避原地重试（8s→15s→25s），通常一两轮就能挤过去
+	for attempt, wait := 0, 8*time.Second; claim.Code == 9074 && attempt < 3; attempt++ {
 		select {
-		case <-time.After(8 * time.Second):
+		case <-time.After(wait):
 		case <-ctx.Done():
 			return false, "", ctx.Err()
 		}
+		wait += 7 * time.Second
 		if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, ugHeaders(acct), checkinBody, &claim, 30*time.Second); err != nil {
 			return false, "", err
 		}
+	}
+	// 9074 退避重试仍失败：设备号可能已被上游拉黑（实测：status 正常而 claim
+	// 恒 9074，换全新设备号立即成功——多设备实验期触发过风控的账号会这样）。
+	// 换一个新设备号再试一轮；成功则新号落库（调用方负责持久化），仍失败则还原。
+	if claim.Code == 9074 {
+		oldDev := acct.ExtraGet(store.ExtraTraeDeviceID)
+		acct.ExtraSet(store.ExtraTraeDeviceID, genDeviceID())
+		h := ugHeaders(acct)
+		for attempt, wait := 0, 10*time.Second; claim.Code == 9074 && attempt < 2; attempt++ {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return false, "", ctx.Err()
+			}
+			wait += 10 * time.Second
+			if _, err := httpx.DoJSON(ctx, "POST", ugBase(pc)+epCheckinClaim, h, checkinBody, &claim, 30*time.Second); err != nil {
+				acct.ExtraSet(store.ExtraTraeDeviceID, oldDev)
+				return false, "", err
+			}
+		}
 		if claim.Code == 9074 {
-			return false, "签到排队限流(9074)，已自动重试仍被限流，稍后会自动补签", fmt.Errorf("签到失败(code=9074): 当前参与用户太多，已自动重试一次仍被限流，等下一轮自动补签")
+			acct.ExtraSet(store.ExtraTraeDeviceID, oldDev)
+			return false, "签到排队限流(9074)，重试+换设备号仍被限流，稍后会自动补签", fmt.Errorf("签到失败(code=9074): 当前参与用户太多，多次自动重试（含换设备号）仍被限流，等下一轮自动补签")
 		}
 	}
 	msg := claim.Message

@@ -13,6 +13,7 @@ const I18N = {
     usage_owner: '主人（主 Key）', usage_no_quota: '暂无额度快照，点账号「查额度」后展示', usage_total: '共',
     usage_until: '到期', usage_req_unit: ' 次', usage_empty: '暂无调用记录',
     usage_reload: '刷新', usage_reloading: '刷新中…',
+    usage_stats: '用量统计', us_7d: '近 7 日', us_30d: '近 30 日', us_other: '其他', us_no_data: '暂无调用数据',
     dash_title: '总览', dash_sub: '账号额度与接口状态一览',
     dash_refresh_quotas: '刷新全部额度', dash_checkin_all: '立即签到/领取',
     dash_refresh_tokens: '刷新全部token', refresh_tokens_busy: '正在刷新全部token…',
@@ -41,7 +42,7 @@ const I18N = {
     fmt_ant_full: 'Anthropic · 完整端点 /v1/messages',
     fmt_models: '模型列表 /v1/models',
     /* 用量日志 */
-    usage_title: '用量日志',
+    usage_log_title: '用量日志', usage_log_detail: '调用明细',
     usage_hint: '每次 API 调用的 token 消耗记录（保留最近 500 条，含失败请求）。分享钥匙的调用会显示钥匙名称。',
     usage_time: '时间', usage_caller: '来源', usage_prov: '提供商', usage_model: '模型',
     usage_tokens: 'tokens（问+答）', usage_dur: '耗时', usage_status: '状态',
@@ -51,7 +52,7 @@ const I18N = {
     share_title: '分享钥匙（发给别人的专用 Key）',
     share_hint: '每把钥匙可按提供商开关并设用量上限（按 token 计量；上限 0 = 不限）。WorkBuddy / Trae 的「积分」无法逐次读取，用 token 用量近似控制，建议设保守值。主 API Key 请勿外发，发这把专用钥匙即可。',
     share_create: '创建分享钥匙', share_name_ph: '名称（比如：给小明的）',
-    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限', share_limit_qw: 'tokens 上限',
+    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限', share_limit_qw: 'tokens 上限', share_limit_ol: 'tokens 上限',
     share_models_ph: '允许模型（逗号分隔，留空=全部）',
     share_none: '还没有分享钥匙，在下方创建一把',
     share_used: '已用', share_times: '次',
@@ -61,12 +62,15 @@ const I18N = {
     set_title: '设置', set_sub: '修改后点击保存；监听地址与端口需重启生效',
     save: '保存', cancel: '取消', close: '关闭', confirm: '确认',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode（智谱 GLM）',
-    prov_qwen: '千问 Qwen（网页版）',
+    prov_qwen: '千问 Qwen（网页版）', prov_ollama: 'Ollama（本地模型）',
     login_qw_title: '添加千问网页版账号',
     login_qw_s1: '浏览器登录 chat.qwen.ai（网页版对话）',
     login_qw_s2: 'F12 → 网络(Network) → 随便发一条消息 → 找到 chat/completions 请求 → 复制请求头 Authorization 里 Bearer 后面的令牌',
     login_qw_token: 'Access Token（Bearer 后面那串）', login_qw_nick: '备注名（可选）',
     login_qw_save: '保存账号', login_qw_saved: '千问账号已添加',
+    qw_b_import: '一键浏览器导入（推荐）', qw_b_starting: '正在打开浏览器…', qw_b_manual_divider: '—— 或手动粘贴 Token（F12）——',
+    qw_verify: '过验证', qw_verify_tip: '打开浏览器完成风控滑块验证，通过后自动恢复该账号', qw_verify_started: '已打开验证窗口：请在弹出的浏览器里完成滑块验证，完成后自动生效', qw_verify_done: '✅ 验证通过，账号已恢复，可继续使用', qw_verify_fail: '无法启动验证', qw_verify_timeout: '验证超时（5 分钟）：请重试或完成滑块后重新点一次',
+    qw_b_nosig: '账号已导入，但风控签名未抓到', qw_b_nosig_retry: '⚠️ 账号已保存，但风控签名（bx-ua）未抓到——请在弹出的浏览器窗口里正常浏览几秒（若出现滑块请完成验证），然后重新点一次"一键浏览器导入"',
     prov_off: '已关闭',
     accounts: '账号', active: '可用', remain: '剩余额度',
     acct_add: '添加账号', acct_login: '登录添加', acct_manual: '手动导入', acct_import_local: '从本机 ZCode 导入',
@@ -132,6 +136,9 @@ const I18N = {
     set_zcode_interval: 'ZCode 领取轮询周期（分钟）',
     set_zcode_shape: 'ZCode 请求形状注入', set_zcode_shape_d: 'overwrite=整体替换 system（实测最稳）；prepend=前置注入；off=关闭',
     set_quota_refresh: '额度定时刷新（秒，可填 0.5，0=关闭）',
+    set_opt_compact: 'Token 优化：JSON 紧凑化', set_opt_compact_d: '压平请求里 pretty-print 的 JSON（工具结果/工具参数），只删语法空白、信息零丢失，省输入 token',
+    set_opt_dedup: 'Token 优化：重复内容折叠', set_opt_dedup_d: '同一次对话里完全相同的大段内容（重复读文件/重复命令输出）只保留最新一份，旧的出现折叠成一行标记；完整内容仍在上下文，不影响效果',
+    us_saved: 'Token 优化已节省', us_saved_tip: '近 {n} 天网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
     set_trae_switch: 'Trae 积分耗尽自动换号',
     set_trae_switch_d: '需开启额度定时刷新。刷新时发现某 Trae 账号积分耗尽，自动切换到其他账号（无需等请求报错）；积分恢复后自动回归',
     set_refresh_skew: 'token 提前刷新（分钟）',
@@ -156,6 +163,7 @@ const I18N = {
     usage_owner: 'Owner (master key)', usage_no_quota: 'No quota snapshot yet; click "Quota" on an account first', usage_total: 'total',
     usage_until: 'until', usage_req_unit: ' req', usage_empty: 'No calls recorded',
     usage_reload: 'Refresh', usage_reloading: 'Refreshing…',
+    usage_stats: 'Usage stats', us_7d: '7 days', us_30d: '30 days', us_other: 'Other', us_no_data: 'No calls yet',
     dash_title: 'Dashboard', dash_sub: 'Account quotas and API status at a glance',
     dash_refresh_quotas: 'Refresh quotas', dash_checkin_all: 'Check in / claim now',
     dash_refresh_tokens: 'Refresh all tokens', refresh_tokens_busy: 'Refreshing all tokens…',
@@ -184,7 +192,7 @@ const I18N = {
     fmt_ant_full: 'Anthropic · full endpoint /v1/messages',
     fmt_models: 'Model list /v1/models',
     /* usage log */
-    usage_title: 'Usage Log',
+    usage_log_title: 'Usage Log', usage_log_detail: 'Call Details',
     usage_hint: 'Token consumption per API call (last 500 kept, including failed ones). Calls via a share key show its name.',
     usage_time: 'Time', usage_caller: 'Caller', usage_prov: 'Provider', usage_model: 'Model',
     usage_tokens: 'Tokens (in+out)', usage_dur: 'Took', usage_status: 'Status',
@@ -194,7 +202,7 @@ const I18N = {
     share_title: 'Share keys (dedicated keys for others)',
     share_hint: 'Each key can toggle providers and cap usage (measured in tokens; 0 = unlimited). WorkBuddy / Trae points cannot be read per-request, so token usage is used as an approximation — set conservative limits. Never send out your main API Key; send a share key instead.',
     share_create: 'Create share key', share_name_ph: 'Name (e.g. for Alice)',
-    share_limit_wb: 'points cap', share_limit_trae: 'points cap', share_limit_zc: 'tokens cap', share_limit_qw: 'tokens cap',
+    share_limit_wb: 'points cap', share_limit_trae: 'points cap', share_limit_zc: 'tokens cap', share_limit_qw: 'tokens cap', share_limit_ol: 'tokens cap',
     share_models_ph: 'Allowed models (comma-separated, empty = all)',
     share_none: 'No share keys yet — create one below',
     share_used: 'Used', share_times: ' reqs',
@@ -204,12 +212,20 @@ const I18N = {
     set_title: 'Settings', set_sub: 'Click Save after changes; host/port need a restart',
     save: 'Save', cancel: 'Cancel', close: 'Close', confirm: 'OK',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode (GLM)',
-    prov_qwen: 'Qwen (Web)',
+    prov_qwen: 'Qwen (Web)', prov_ollama: 'Ollama (local models)',
+    share_limit_ol: 'tokens limit',
     login_qw_title: 'Add Qwen Web Account',
     login_qw_s1: 'Sign in at chat.qwen.ai in your browser',
     login_qw_s2: 'F12 → Network → send any message → find the chat/completions request → copy the token after "Bearer " in the Authorization request header',
     login_qw_token: 'Access Token (string after Bearer)', login_qw_nick: 'Nickname (optional)',
     login_qw_save: 'Save account', login_qw_saved: 'Qwen account added',
+    qw_b_import: 'One-click browser import (recommended)', qw_b_starting: 'Launching browser…',
+    qw_verify: 'Verify', qw_verify_tip: 'Open a browser to pass the WAF slider check; the account recovers automatically afterwards', qw_verify_started: 'Verify window opened: complete the slider in the popup browser; it takes effect automatically', qw_verify_done: '✅ Verification passed, account restored', qw_verify_fail: 'Cannot start verification', qw_verify_timeout: 'Verification timed out (5 min): please retry',
+    qw_b_nosig: 'Account imported, but WAF signature not captured', qw_b_nosig_retry: '⚠️ Account saved, but the WAF signature (bx-ua) was not captured — browse normally in the opened browser window for a few seconds (complete the slider if shown), then click one-click import again',
+    qw_b_waiting: 'Login window opened: sign in to Qwen there, it will be imported automatically (no F12 needed)',
+    qw_b_nobrowser: 'Edge/Chrome not found, paste the token manually',
+    qw_b_timeout: 'Browser launch timed out, close old Qwen login windows and retry',
+    qw_b_manual_divider: '—— Or paste token manually (F12) ——',
     prov_off: 'disabled',
     accounts: 'Accounts', active: 'Active', remain: 'Remaining',
     acct_add: 'Add account', acct_login: 'Login', acct_manual: 'Manual import', acct_import_local: 'Import from local ZCode',
@@ -273,6 +289,10 @@ const I18N = {
     set_zcode_interval: 'ZCode claim poll interval (minutes)',
     set_zcode_shape: 'ZCode request-shape injection', set_zcode_shape_d: 'overwrite=replace system with client shape (most reliable); prepend=prepend; off=disable',
     set_quota_refresh: 'Quota auto refresh (seconds, 0.5 allowed, 0=off)',
+    set_opt_compact: 'Token saver: compact JSON', set_opt_compact_d: 'Minify pretty-printed JSON in tool results/arguments; syntax whitespace only, zero information loss',
+    set_opt_dedup: 'Token saver: fold duplicates', set_opt_dedup_d: 'Byte-identical large content repeated in one conversation (re-read files, repeated command output) keeps only the latest copy; earlier ones become a one-line marker. Full content stays in context',
+    us_saved: 'Saved by token optimization', us_saved_tip: 'Estimated input tokens saved by gateway optimization (JSON compaction + duplicate folding) in the last {n} days',
+
     set_trae_switch: 'Auto-switch when Trae credits exhausted',
     set_trae_switch_d: 'Requires quota auto refresh. When a Trae account runs out of credits, it is switched out automatically (no need to wait for a failed request); it returns once credits recover',
     set_refresh_skew: 'Refresh token skew (minutes)',
@@ -632,7 +652,7 @@ $$('.nav-item').forEach(item => {
     $$('.page').forEach(p => p.classList.remove('active'));
     $('#page-' + item.dataset.page).classList.add('active');
     if (item.dataset.page === 'logs') startLogStream();
-    if (item.dataset.page === 'usage') loadUsage();
+    if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); }
   });
 });
 
@@ -663,22 +683,31 @@ async function loadUsage() {
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
       <div style="font-size:22px;font-weight:600">${tks.requests || 0}</div>
       <div style="opacity:.5;font-size:11px">${t('usage_tracked')} ${tks.tracked || 0}</div></div>`;
-  // 各账号额度与占比
+  // 各账号额度与占比：折叠为一行总积分，点右侧小三角展开完整明细
   const accs = d.accounts || [];
-  $('#usageQuotaList').innerHTML = accs.length ? accs.map(x => {
+  $('#usageQuotaList').innerHTML = accs.length ? accs.map((x, i) => {
     const pct = x.total > 0 ? (x.used / x.total * 100).toFixed(1) + '%' : '—';
     const unit = x.unit || '';
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--border,#333)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    const bodyId = `uq-body-${i}`;
+    const totalLine = x.total > 0 ? `${fmtNum(x.total)} ${esc(unit)}` : '—';
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border,#333)">
+      <div data-qtoggle="${bodyId}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;user-select:none">
         <div><b>${esc(x.nickname)}</b> <span class="badge">${esc(x.provider)}</span>
           ${x.plan ? `<span class="badge acc">${esc(x.plan)}</span>` : ''}</div>
-        <div style="font-variant-numeric:tabular-nums">${fmtNum(x.used)} / ${fmtNum(x.total)} ${esc(unit)}
-          <span style="opacity:.55;margin-left:6px">${pct}</span></div>
-      </div>${usageBar(x.used, x.total)}
-      ${(x.parts && x.parts.length > 1) ? x.parts.map(pt => `
-        <div style="margin-top:6px;font-size:12px;opacity:.8">
-          ${esc(pt.name)}：${fmtNum(pt.used)} / ${fmtNum(pt.total)} ${esc(pt.unit || '')}${pt.expiresAt ? ` · ${t('usage_until')} ${new Date(pt.expiresAt * 1000).toLocaleString()}` : ''}
-        </div>${usageBar(pt.used, pt.total)}`).join('') : ''}
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-variant-numeric:tabular-nums">${totalLine}</span>
+          <span class="qtri" style="display:inline-block;font-size:10px;opacity:.55;transition:transform .15s;line-height:1">▼</span>
+        </div>
+      </div>
+      <div id="${bodyId}" style="display:none;padding-top:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;opacity:.75;margin-bottom:2px">
+          <span>${t('usage_in')} ${fmtNum(x.used)}</span><span>${pct}</span>
+        </div>${usageBar(x.used, x.total)}
+        ${(x.parts && x.parts.length > 1) ? x.parts.map(pt => `
+          <div style="margin-top:6px;font-size:12px;opacity:.8">
+            ${esc(pt.name)}：${fmtNum(pt.used)} / ${fmtNum(pt.total)} ${esc(pt.unit || '')}${pt.expiresAt ? ` · ${t('usage_until')} ${new Date(pt.expiresAt * 1000).toLocaleString()}` : ''}
+          </div>${usageBar(pt.used, pt.total)}`).join('') : ''}
+      </div>
     </div>`;
   }).join('') : `<div style="opacity:.55;padding:12px 0">${t('usage_no_quota')}</div>`;
   // 分布
@@ -732,6 +761,7 @@ function providerMeta(name) {
     trae: { label: t('prov_trae'), icon: '/icons/trae.png', color: '#4f8cff' },
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
     qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
+    ollama: { label: t('prov_ollama'), icon: '/icons/ollama.png', color: '#9aa0a6' },
   };
   return map[name] || { label: name, icon: '/favicon.svg', color: '#8b93a5' };
 }
@@ -745,14 +775,18 @@ function renderProviders() {
   if (!overview) return;
   const box = $('#provCards');
   box.innerHTML = '';
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
     const s = (overview.summary && overview.summary[name]) || { accounts: 0, active: 0, remain: 0, total: 0, unit: '' };
     const meta = providerMeta(name);
     const card = document.createElement('div');
     card.className = 'card stat';
+    // qwen 无固定额度、ollama 为本地推理：不显示数字，用占位符保持卡片高度一致
+    const numHtml = (name === 'ollama' || name === 'qwen')
+      ? `<div class="num" style="opacity:.3">—</div>`
+      : `<div class="num">${fmtNum(s.remain)}<small>${esc(s.unit || '')}</small></div>`;
     card.innerHTML = `
       <div class="label"><span>${picoImg(name)} ${esc(meta.label)}</span><span class="dot ${s.active > 0 ? 'on' : 'off'}"></span></div>
-      <div class="num">${fmtNum(s.remain)}<small>${esc(s.unit || '')}</small></div>
+      ${numHtml}
       <div class="label" style="margin-top:6px"><span>${t('accounts')} ${s.accounts} · ${t('active')} ${s.active}</span></div>`;
     box.appendChild(card);
   }
@@ -770,6 +804,17 @@ async function withBusy(btn, fn, busyText) {
     btn.textContent = old;
   }
 }
+// 账号额度折叠行：点整行或右侧小三角展开/收起完整明细
+$('#usageQuotaList').addEventListener('click', e => {
+  const head = e.target.closest('[data-qtoggle]');
+  if (!head) return;
+  const body = document.getElementById(head.dataset.qtoggle);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  const tri = head.querySelector('.qtri');
+  if (tri) tri.style.transform = open ? '' : 'rotate(180deg)';
+});
 $('#btnRefreshQuotas').addEventListener('click', e => withBusy(e.currentTarget, async () => {
   await post('/api/panel/refresh-quotas');
   toast(t('quota_ok'));
@@ -786,6 +831,7 @@ $('#btnReloadUsage').addEventListener('click', async () => {
     try { await post('/api/panel/refresh-quotas'); } catch {}
     await loadUsage();
     await loadUsageLog();
+    loadUsageStats();
   } finally {
     btn.textContent = old;
     delete btn.dataset.busy;
@@ -870,7 +916,7 @@ function renderAccounts() {
   const box = $('#acctSections');
   box.innerHTML = '';
   renderZcodePending(box);
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
     const meta = providerMeta(name);
     const list = (overview.accounts || []).filter(a => a.provider === name);
     const sec = document.createElement('div');
@@ -879,7 +925,7 @@ function renderAccounts() {
       <div class="sec-head">
         <h2>${picoImg(name)} ${esc(meta.label)} <span class="badge">${list.length}</span></h2>
         <div class="row">
-          <button class="sm" data-add="${name}">＋ ${t('acct_add')}</button>
+          ${name !== 'ollama' ? `<button class="sm" data-add="${name}">＋ ${t('acct_add')}</button>` : ''}
         </div>
       </div>
       <div data-list="${name}"></div>`;
@@ -901,8 +947,11 @@ function acctCard(a) {
   el.className = 'acct';
   const st = acctStatus(a);
   const q = a.lastQuota || a.quota;
+  const noCloud = a.provider === 'qwen' || a.provider === 'ollama'; // 本地/无固定额度：不显示额度条与凭据操作
   let quotaHtml = '';
-  if (q && (q.total > 0 || q.remain > 0)) {
+  if (noCloud) {
+    quotaHtml = ''; // 千问网页版 / 本机 Ollama：不显示"剩余额度/未查询"
+  } else if (q && (q.total > 0 || q.remain > 0)) {
     const pct = q.total > 0 ? Math.max(2, Math.min(100, Math.round(q.remain / q.total * 100))) : 100;
     quotaHtml = `
       <div class="quota">
@@ -924,21 +973,22 @@ function acctCard(a) {
       </div>
       <div class="meta">
         ${a.uid ? `<span>UID ${esc(String(a.uid))}</span>` : ''}
-        <span>${t('token_expiry')}: ${a.expiresAt ? fmtTime(a.expiresAt) : t('never')}</span>
-        <span>${t('last_checkin')}: ${a.lastCheckinMsg ? esc(a.lastCheckinMsg) + ' · ' + fmtTime(a.lastCheckinAt) : t('never')}</span>
+        ${!noCloud ? `<span>${t('token_expiry')}: ${a.expiresAt ? fmtTime(a.expiresAt) : t('never')}</span>
+        <span>${t('last_checkin')}: ${a.lastCheckinMsg ? esc(a.lastCheckinMsg) + ' · ' + fmtTime(a.lastCheckinAt) : t('never')}</span>` : ''}
       </div>
       ${quotaHtml}
     </div>
     <div class="acts">
-      <button class="sm" data-act="quota">🔄 ${t('act_quota')}</button>
-      ${a.provider !== 'qwen' ? `<button class="sm" data-act="checkin">🎁 ${t('act_checkin')}</button>` : ''}
-      <button class="sm" data-act="refresh">🔑 ${t('act_refresh')}</button>
-      ${a.hasRefresh ? `<button class="sm" data-act="copyrt">📋 ${t('act_copy_rt')}</button>` : ''}
+      ${!noCloud ? `<button class="sm" data-act="quota">🔄 ${t('act_quota')}</button>` : ''}
+      ${!noCloud ? `<button class="sm" data-act="checkin">🎁 ${t('act_checkin')}</button>` : ''}
+      ${!noCloud ? `<button class="sm" data-act="refresh">🔑 ${t('act_refresh')}</button>` : ''}
+      ${!noCloud && a.hasRefresh ? `<button class="sm" data-act="copyrt">📋 ${t('act_copy_rt')}</button>` : ''}
       ${a.provider === 'trae' ? `<button class="sm" data-act="switchide" title="${esc(t('act_switch_ide_tip'))}">⚡ ${t('act_switch_ide')}</button>
       <button class="sm" data-act="captureide" title="${esc(t('act_capture_tip'))}">📥 ${t('act_capture')}</button>
       <button class="sm" data-act="migratesess" title="${esc(t('act_migrate_tip'))}">🧬 ${t('act_migrate')}</button>` : ''}
       ${a.provider === 'zcode' ? `<button class="sm" data-act="plans">🎪 ${t('zc_plans')}</button>
       <button class="sm" data-act="raw">🧾 ${t('act_raw')}</button>` : ''}
+      ${a.provider === 'qwen' && a.extra && a.extra.punishURL ? `<button class="sm danger" data-act="verify" title="${esc(t('qw_verify_tip'))}">🛡 ${t('qw_verify')}</button>` : ''}
       <button class="sm" data-act="toggle">${a.enabled ? '⏸' : '▶'} ${a.enabled ? t('act_disable') : t('act_enable')}</button>
       <button class="sm danger" data-act="delete">🗑</button>
     </div>`;
@@ -990,6 +1040,26 @@ async function acctAction(act, a, btn) {
         <div class="foot"><button id="rawClose">${t('close')}</button></div>`);
       $('#rawClose').addEventListener('click', closeModal);
       return;
+    } else if (act === 'verify') {
+      btn.disabled = true;
+      const s = await post('/api/panel/qwen/verify/start', { id: a.id });
+      if (!s.ok) { toast(t('qw_verify_fail') + ' (' + (s.status || 'unknown') + ')', true); return; }
+      toast(t('qw_verify_started'));
+      const deadline = Date.now() + 300000;
+      const timer = setInterval(async () => {
+        try {
+          const r = await api('/api/panel/qwen/verify/poll');
+          if (r && r.ok) {
+            clearInterval(timer);
+            toast(t('qw_verify_done'));
+            loadOverview();
+          } else if (Date.now() > deadline) {
+            clearInterval(timer);
+            toast(t('qw_verify_timeout'), true);
+          }
+        } catch (_) { /* 窗口关闭等瞬时错误忽略，下轮再试 */ }
+      }, 2000);
+      return; // 轮询结束后自行刷新，不走统一 loadOverview
     } else if (act === 'toggle') {
       await patch(`/api/panel/account/${a.id}`, { enabled: !a.enabled });
     } else if (act === 'delete') {
@@ -1180,14 +1250,46 @@ function addModalZcode() {
 /* Qwen Web */
 function addModalQwen() {
   showModal(t('login_qw_title'), `
-    ${steps([t('login_qw_s1'), t('login_qw_s2')])}
-    <div class="field" style="margin-top:12px"><label>${t('login_qw_token')}</label>
+    <button class="primary" id="qwBrowser">🌐 ${t('qw_b_import')}</button>
+    <div class="hint" id="qwStatus"></div>
+    <div class="hint" style="margin-top:12px;opacity:.7">${t('qw_b_manual_divider')}</div>
+    <div class="field"><label>${t('login_qw_token')}</label>
       <input type="password" id="qwToken" placeholder="eyJhbGciOi...">
     </div>
     <div class="field"><label>${t('login_qw_nick')}</label><input type="text" id="qwNick"></div>
-    <button class="primary" id="qwSave">${t('login_qw_save')}</button>
-    <div class="hint" id="qwStatus"></div>
+    <button id="qwSave">${t('login_qw_save')}</button>
   `);
+  $('#qwBrowser').addEventListener('click', async () => {
+    const st = $('#qwStatus');
+    if (!st) return;
+    try {
+      st.textContent = t('qw_b_starting');
+      const r0 = await post('/api/panel/qwen/browser/start', {});
+      if (!r0 || !r0.ok) {
+        st.textContent = r0 && r0.status === 'no-browser' ? t('qw_b_nobrowser') : t('qw_b_timeout');
+        return;
+      }
+      st.textContent = t('qw_b_waiting');
+      for (let i = 0; i < 300; i++) {
+        await new Promise(res => setTimeout(res, 2000));
+        if (!document.getElementById('qwStatus')) return; // 弹窗已关闭，停止轮询
+        const r = await api('/api/panel/qwen/browser/poll');
+        if (r && r.ok) {
+          // 风控签名（bx-ua）是否抓到：没抓到时提示重试，避免静默导入不完整
+          if (r.sig === false) {
+            toast(t('qw_b_nosig'), true);
+            st.textContent = t('qw_b_nosig_retry');
+          } else {
+            toast(t('login_qw_saved'));
+          }
+          loadOverview();
+          if (r.sig !== false) closeModal();
+          return;
+        }
+      }
+      if (document.getElementById('qwStatus')) st.textContent = t('qw_b_timeout');
+    } catch (e) { if (document.getElementById('qwStatus')) st.textContent = e.message; }
+  });
   $('#qwSave').addEventListener('click', async () => {
     const token = $('#qwToken').value.trim();
     if (!token) { $('#qwStatus').textContent = t('login_qw_token'); return; }
@@ -1265,7 +1367,7 @@ async function renderModels(cached) {
   const chips = $('#modelChips');
   chips.innerHTML = '';
   const all = modelCache || {};
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
     const meta = providerMeta(name);
     for (const m of (all[name] || [])) {
       const chip = document.createElement('span');
@@ -1324,7 +1426,7 @@ function renderSettings() {
     settingRow(t('set_listen_host'), t('set_listen_host_d'), `<input type="text" id="sHost" value="${esc(c.host)}">`),
     settingRow(t('set_listen_port'), '', `<input type="number" id="sPort" value="${c.port}">`),
     settingRow(t('set_api_key'), '', `<div class="keyline"><input type="text" id="sKey" value="${esc(c.apiKey)}"><button class="sm" id="sRegen">${t('set_regen_key')}</button></div>`),
-    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode', 'qwen'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
+    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode', 'qwen', 'ollama'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
     settingRow(t('set_auto_checkin'), t('set_auto_checkin_d'), `<label class="switch"><input type="checkbox" id="sAutoCheckin" ${c.autoCheckin ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_wb_keepalive'), t('set_wb_keepalive_d'), `<label class="switch"><input type="checkbox" id="sWbKeep" ${c.wbIntlKeepalive ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_zcode_claim'), t('set_zcode_claim_d'), `<label class="switch"><input type="checkbox" id="sZcClaim" ${c.zcodeAutoClaim ? 'checked' : ''}><i></i></label>`),
@@ -1334,6 +1436,8 @@ function renderSettings() {
     settingRow(t('set_trae_switch'), t('set_trae_switch_d'), `<label class="switch"><input type="checkbox" id="sTraeSwitch" ${c.traeAutoSwitch ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_refresh_skew'), '', `<input type="number" id="sSkew" value="${c.refreshSkewMin}">`),
     settingRow(t('set_expose_prefix'), '', `<label class="switch"><input type="checkbox" id="sExpose" ${c.exposePrefixModels ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_opt_compact'), t('set_opt_compact_d'), `<label class="switch"><input type="checkbox" id="sOptCompact" ${(c.optCompactJSON !== false) ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_opt_dedup'), t('set_opt_dedup_d'), `<label class="switch"><input type="checkbox" id="sOptDedup" ${(c.optDedup !== false) ? 'checked' : ''}><i></i></label>`),
   ].join('');
   $('#sRegen').addEventListener('click', () => {
     const bytes = new Uint8Array(12);
@@ -1357,6 +1461,8 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     traeAutoSwitch: $('#sTraeSwitch').checked,
     refreshSkewMin: parseInt($('#sSkew').value, 10) || 1440,
     exposePrefixModels: $('#sExpose').checked,
+    optCompactJSON: $('#sOptCompact').checked,
+    optDedup: $('#sOptDedup').checked,
   };
   try {
     await post('/api/panel/config', body);
@@ -1502,9 +1608,144 @@ function renderUsageLog(list) {
 }
 setInterval(() => { if (usageLogPage === 1) loadUsageLog(); }, 10000);
 
-const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen'];
+/* ── 用量统计图表（每日趋势 + 模型占比，仿 ZCode 使用统计） ── */
+let usageStatsDays = 7;
+const US_COLORS = ['#4f8cff', '#3ad98a', '#b07aff', '#f2b544', '#ff6b6b', '#42c8ff', '#ff8fd0'];
+
+function usDayLabel(day) {
+  const p = (day || '').split('-');
+  return p.length === 3 ? `${+p[1]}/${+p[2]}` : day;
+}
+
+async function loadUsageStats() {
+  const box = $('#usTrend');
+  if (!box) return;
+  let d;
+  try { d = await api(`/api/panel/usage/stats?days=${usageStatsDays}`); } catch { return; }
+  renderUsageTrend(d || {});
+  renderUsageDonut(d || {});
+}
+
+// usSeries 取 top maxN 模型的按日序列，其余并为「其他」
+function usSeries(d, maxN) {
+  const models = (d.models || []).filter(m => m.tokens > 0);
+  const top = models.slice(0, maxN);
+  const rest = models.slice(maxN);
+  const series = top.map((m, i) => ({
+    name: m.model, color: US_COLORS[i % US_COLORS.length],
+    vals: (d.days || []).map(day => (day.models && day.models[m.model]) || 0),
+  }));
+  if (rest.length) {
+    series.push({
+      name: t('us_other'), color: '#8b93a5',
+      vals: (d.days || []).map(day => rest.reduce((s, m) => s + ((day.models && day.models[m.model]) || 0), 0)),
+    });
+  }
+  return series;
+}
+
+function renderUsageTrend(d) {
+  const box = $('#usTrend');
+  if (!box) return;
+  const days = d.days || [];
+  if (!days.length || !(d.total > 0)) {
+    box.innerHTML = `<div class="hint">${t('us_no_data')}</div>`;
+    return;
+  }
+  const W = 640, H = 230, padL = 54, padR = 12, padT = 14, padB = 28;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const series = usSeries(d, 5);
+  const maxY = Math.max(...days.map(day => day.tokens || 0), 1);
+  const X = i => (days.length > 1 ? padL + iw * i / (days.length - 1) : padL + iw / 2);
+  const Y = v => padT + ih - ih * v / maxY;
+  let grid = '';
+  for (let g = 0; g <= 3; g++) {
+    const y = Y(maxY * g / 3);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#1c212b" stroke-width="1"/>`
+      + `<text x="${padL - 6}" y="${y + 4}" fill="#5b6474" font-size="10" text-anchor="end">${fmtNum(maxY * g / 3)}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(days.length / 6));
+  let xt = '';
+  days.forEach((day, i) => {
+    if (i % step !== 0 && i !== days.length - 1) return;
+    xt += `<text x="${X(i)}" y="${H - 8}" fill="#5b6474" font-size="10" text-anchor="middle">${usDayLabel(day.day)}</text>`;
+  });
+  const lines = series.map(s =>
+    `<polyline points="${s.vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`
+  ).join('');
+  const legend = series.map(s =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#9aa5b8"><i style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block"></i>${esc(s.name)}</span>`
+  ).join('');
+  box.innerHTML = `
+    <div style="border:1px solid var(--border,#232833);border-radius:10px;padding:10px 8px 4px;background:rgba(255,255,255,.02)">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;padding:0 8px 6px">${legend}</div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${grid}${xt}${lines}</svg>
+    </div>${d.savedTotal > 0 ? `<div class="hint" style="margin-top:6px;display:flex;align-items:center;gap:6px" title="${esc((t('us_saved_tip') || '').replace('{n}', usageStatsDays))}">🌱 ${esc(t('us_saved'))}: <b style="font-family:var(--mono)">≈ ${fmtNum(d.savedTotal)}</b> tokens</div>` : ''}`;
+}
+
+function renderUsageDonut(d) {
+  const box = $('#usDonut');
+  if (!box) return;
+  const models = (d.models || []).filter(m => m.tokens > 0);
+  if (!models.length || !(d.total > 0)) { box.innerHTML = ''; return; }
+  const total = d.total;
+  const R = 78, SW = 30, C = 2 * Math.PI * R;
+  let off = 0, segs = '';
+  const shown = models.slice(0, 7);
+  shown.forEach((m, i) => {
+    const frac = m.tokens / total;
+    const len = Math.max(frac * C - 2, 0.5);
+    segs += `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${US_COLORS[i % US_COLORS.length]}" stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
+    off += frac * C;
+  });
+  if (models.length > shown.length) {
+    const restTk = models.slice(shown.length).reduce((s, m) => s + m.tokens, 0);
+    const len = Math.max(restTk / total * C - 2, 0.5);
+    segs += `<circle r="${R}" cx="100" cy="100" fill="none" stroke="#8b93a5" stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
+  }
+  const rows = shown.map((m, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px">
+      <i style="width:9px;height:9px;border-radius:50%;background:${US_COLORS[i % US_COLORS.length]};flex:0 0 auto"></i>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.model)}">${esc(m.model)}</span>
+      <span style="font-family:var(--mono);opacity:.85">${fmtNum(m.tokens)}</span>
+      <span style="width:48px;text-align:right;opacity:.6">${(m.tokens / total * 100).toFixed(1)}%</span>
+    </div>`).join('');
+  box.innerHTML = `
+    <div style="border:1px solid var(--border,#232833);border-radius:10px;padding:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:rgba(255,255,255,.02)">
+      <svg viewBox="0 0 200 200" style="width:170px;height:170px;flex:0 0 auto">${segs}
+        <text x="100" y="96" text-anchor="middle" fill="#e8eefb" font-size="20" font-weight="600">${fmtNum(total)}</text>
+        <text x="100" y="116" text-anchor="middle" fill="#5b6474" font-size="11">tokens</text>
+      </svg>
+      <div style="flex:0 1 340px;min-width:230px">${rows}</div>
+    </div>`;
+}
+
+function usRangeStyle() {
+  const b7 = $('#usRange7'), b30 = $('#usRange30');
+  if (!b7 || !b30) return;
+  b7.textContent = t('us_7d');
+  b30.textContent = t('us_30d');
+  b7.style.opacity = usageStatsDays === 7 ? '1' : '.45';
+  b30.style.opacity = usageStatsDays === 30 ? '1' : '.45';
+  b7.style.borderColor = usageStatsDays === 7 ? 'var(--accent,#4f8cff)' : '';
+  b30.style.borderColor = usageStatsDays === 30 ? 'var(--accent,#4f8cff)' : '';
+}
+
+function initUsageStats() {
+  const b7 = $('#usRange7'), b30 = $('#usRange30');
+  if (!b7 || !b30) return;
+  if (!b7.dataset.init) {
+    b7.dataset.init = '1';
+    b7.addEventListener('click', () => { usageStatsDays = 7; usRangeStyle(); loadUsageStats(); });
+    b30.addEventListener('click', () => { usageStatsDays = 30; usRangeStyle(); loadUsageStats(); });
+  }
+  usRangeStyle();
+}
+setInterval(() => { if (usageLogPage === 1) loadUsageStats(); }, 60000);
+
+const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama'];
 function shareLimitLabel(pv) {
-  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : t('share_limit_zc');
+  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : pv === 'ollama' ? t('share_limit_ol') : t('share_limit_zc');
 }
 
 async function loadShares() {
@@ -1632,6 +1873,8 @@ async function boot() {
   loadTunnel();
   loadShares();
   loadUsageLog();
+  initUsageStats();
+  loadUsageStats();
 }
 boot();
 setInterval(loadOverview, 30000);

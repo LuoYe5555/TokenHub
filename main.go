@@ -23,6 +23,7 @@ import (
 	"tokenhub/internal/localimport"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
+	"tokenhub/internal/provider/ollama"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
 	"tokenhub/internal/provider/workbuddy"
@@ -80,6 +81,7 @@ func main() {
 	pl.Register(trae.New(cfg))
 	pl.Register(zcode.New(cfg))
 	pl.Register(qwen.New(cfg))
+	pl.Register(ollama.New(cfg))
 	zcode.WarmAppVersion()
 
 	// 启动即扫描本机已登录的客户端账号（静默导入，按 uid 去重）
@@ -90,9 +92,21 @@ func main() {
 		if accts := zcodeReadLocalAccounts(); len(accts) > 0 {
 			added[store.PZCode] = localimport.AddAllUnique(st, store.PZCode, accts)
 		}
-		if n := added[store.PWorkBuddy] + added[store.PTrae] + added[store.PZCode]; n > 0 {
-			logx.Infof("import", "本机自动导入完成: workbuddy +%d, trae +%d, zcode +%d",
-				added[store.PWorkBuddy], added[store.PTrae], added[store.PZCode])
+		// Ollama 无需凭据：没有账号就建一个伪账号占位（本机服务，模型动态发现）
+		if len(st.ByProvider(store.POllama)) == 0 {
+			if err := st.Upsert(&store.Account{
+				ID:        store.NewID(),
+				Provider:  store.POllama,
+				Nickname:  "本机 Ollama",
+				Enabled:   true,
+				CreatedAt: time.Now().Unix(),
+			}); err == nil {
+				added[store.POllama] = 1
+			}
+		}
+		if n := added[store.PWorkBuddy] + added[store.PTrae] + added[store.PZCode] + added[store.POllama]; n > 0 {
+			logx.Infof("import", "本机自动导入完成: workbuddy +%d, trae +%d, zcode +%d, ollama +%d",
+				added[store.PWorkBuddy], added[store.PTrae], added[store.PZCode], added[store.POllama])
 		}
 	}()
 

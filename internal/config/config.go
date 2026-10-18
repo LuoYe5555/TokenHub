@@ -18,9 +18,10 @@ const (
 	PTrae      = "trae"
 	PZCode     = "zcode"
 	PQwen      = "qwen"
+	POllama    = "ollama"
 )
 
-func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen} }
+func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama} }
 
 // ProviderConfig 单个提供商的开关与上游地址覆盖（上游接口变更时使用）。
 type ProviderConfig struct {
@@ -67,6 +68,10 @@ type Config struct {
 	ConnectTimeoutSec  int    `json:"connectTimeoutSec"`  // 连接段（首字节前）超时
 
 	ExposePrefixModels bool `json:"exposePrefixModels"` // /v1/models 同时列出 "provider:model" 变体
+
+	// Token 优化（网关层无损省 token，不改变模型可见信息）
+	OptDedup       *bool `json:"optDedup,omitempty"`       // 折叠会话内重复的大段内容（保留最新一份）；nil=开
+	OptCompactJSON *bool `json:"optCompactJSON,omitempty"` // 紧凑化请求中的 pretty JSON；nil=开
 
 	DataDir string `json:"-"`
 }
@@ -204,6 +209,12 @@ func (c *Config) Save() error {
 	}
 	return os.Rename(tmp, p)
 }
+
+// OptDedupOn 会话内重复内容折叠开关（缺省开）。
+func (c *Config) OptDedupOn() bool { return c.OptDedup == nil || *c.OptDedup }
+
+// OptCompactJSONOn JSON 紧凑化开关（缺省开）。
+func (c *Config) OptCompactJSONOn() bool { return c.OptCompactJSON == nil || *c.OptCompactJSON }
 
 // PC 返回指定提供商配置（保证非 nil）。
 func (c *Config) PC(name string) *ProviderConfig {

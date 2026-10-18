@@ -147,7 +147,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .setting-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)}
 .setting-row:last-child{border-bottom:none}
 .setting-row .d{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.5}
-.setting-row .ctl{min-width:180px;max-width:300px}
+.setting-row .ctl{width:240px;min-width:240px;flex:none;display:flex;align-items:center;gap:8px}
+.setting-row .ctl>select,.setting-row .ctl>input{width:100%;flex:1;min-width:0}
+.setting-row .ctl .keyline{flex:1;min-width:0}
+.setting-row .ctl .keyline input{flex:1;min-width:0}
+/* 设置行右侧控件：统一 240px 列宽，所有控件（含开关）从同一左端起排 */
 .switch{position:relative;width:42px;height:24px;flex:none;display:inline-block;vertical-align:middle}
 .switch input{opacity:0;width:0;height:0}
 .switch i{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.2s}
@@ -297,15 +301,6 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <div id="shareList" data-page-node-id="vRmbHxAQHJBjfw9e739EVw"></div>
       <div id="shareCreate" data-page-node-id="dU8UG4SNk1InJEWGppller"></div>
     </div>
-    <!-- 用量日志 -->
-    <div class="card" style="margin-bottom:14px" data-page-node-id="vS8EPJUOGl6hZncFCD31jl">
-      <div class="sec-head" data-page-node-id="nlcVhyeYxLJ9qmPhkramtL"><h2 data-i18n="usage_title" data-page-node-id="rHPNcpfw3OuIn8VYr3edkZ"></h2></div>
-      <div class="hint" data-i18n="usage_hint" data-page-node-id="NCc8qIviY3AbmQ2dtaIjTv"></div>
-      <div style="overflow-x:auto;overflow-y:auto;min-height:520px" data-page-node-id="r5kkHSF6pBAeCzjhz6AG5e">
-        <table class="utable" data-page-node-id="r8nEDmVRkyKhFY5ZAcm2o5"><thead id="usageHead" data-page-node-id="5F4PR2mqnqxXktPuYRMXIX"></thead><tbody id="usageList" data-page-node-id="mMMMIsMJJVYQmH6NdvxwM0"></tbody></table>
-      </div>
-      <div id="usagePager" style="display:none;align-items:center;justify-content:center;gap:6px;padding:10px 0 2px"></div>
-    </div>
     <div class="card" data-page-node-id="HKt2P52QKJyMNh2AhoB9e8">
       <div class="tabs-mini" id="exTabs" data-page-node-id="iKANjxhlLAPTT15gCacVA6">
         <button data-ex="curl" class="on" data-page-node-id="jrsz4Moqv0KjlucBy5TjMs">curl</button>
@@ -329,14 +324,36 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <button class="sm" id="btnReloadUsage" data-i18n="usage_reload"></button>
     </div>
     <div class="row" id="usageCards" style="gap:12px;margin-bottom:14px"></div>
+    <!-- 用量日志（趋势+环形图）：紧随今日 tokens -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="sec-head"><h2 data-i18n="usage_log_title"></h2></div>
+      <div class="hint" data-i18n="usage_hint"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">
+        <div style="font-size:13px;font-weight:600" data-i18n="usage_stats"></div>
+        <div style="display:flex;gap:6px">
+          <button class="sm" id="usRange7"></button>
+          <button class="sm" id="usRange30"></button>
+        </div>
+      </div>
+      <div id="usTrend" style="margin-bottom:6px"></div>
+      <div id="usDonut" style="margin-bottom:10px"></div>
+    </div>
     <div class="card" style="margin-bottom:14px">
       <h3 data-i18n="usage_quota_title"></h3>
       <div id="usageQuotaList"></div>
     </div>
-    <div class="row" style="gap:14px;align-items:flex-start">
+    <div class="row" style="gap:14px;align-items:stretch">
       <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_caller"></h3><div id="usageByCaller"></div></div>
       <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_provider"></h3><div id="usageByProvider"></div></div>
       <div class="card" style="flex:1;min-width:260px"><h3 data-i18n="usage_by_model"></h3><div id="usageByModel"></div></div>
+    </div>
+    <!-- 调用明细：用量页最下方 -->
+    <div class="card" style="margin-top:14px">
+      <div class="sec-head"><h2 data-i18n="usage_log_detail"></h2></div>
+      <div style="overflow-x:auto;overflow-y:auto;max-height:560px;margin-top:8px">
+        <table class="utable"><thead id="usageHead"></thead><tbody id="usageList"></tbody></table>
+      </div>
+      <div id="usagePager" style="display:none;align-items:center;justify-content:center;gap:6px;padding:10px 0 2px"></div>
     </div>
   </section>
 

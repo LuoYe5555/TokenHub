@@ -265,29 +265,6 @@ func SynthEntEnvelope() (string, error) {
 	return tcSeal(raw)
 }
 
-// traeDeviceID 客户端自报设备号（iCubeAuthInfo://icube-dc:<纯数字>），签到风控要求纯数字。
-func traeDeviceID(storage map[string]any) string {
-	for key := range storage {
-		if !strings.HasPrefix(key, traeDCPrefix) {
-			continue
-		}
-		id := strings.TrimPrefix(key, traeDCPrefix)
-		if len(id) >= 8 && isAllDigits(id) {
-			return id
-		}
-	}
-	return ""
-}
-
-func isAllDigits(s string) bool {
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return len(s) > 0
-}
-
 // uidFromTraeJWT Cloud-IDE-JWT 的 payload.data.id 即 uid。
 func uidFromTraeJWT(token string) string {
 	parts := strings.Split(token, ".")

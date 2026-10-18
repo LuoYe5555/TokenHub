@@ -16,6 +16,7 @@ const (
 	PTrae      = "trae"
 	PZCode     = "zcode"
 	PQwen      = "qwen"
+	POllama    = "ollama"
 )
 
 // QuotaPart 额度明细（权益包 / 额度窗口）。

@@ -96,6 +96,10 @@ func (p *Panel) afterAdd(acct *store.Account) {
 			_ = p.store.Mutate(acct.ID, func(a *store.Account) {
 				a.LastCheckinMsg = msg
 				a.LastCheckinAt = time.Now().Unix()
+				// Checkin 内部可能换新了 deviceId（9074 设备号拉黑自愈），落库保存
+				if did := acct.ExtraGet(store.ExtraTraeDeviceID); did != "" {
+					a.ExtraSet(store.ExtraTraeDeviceID, did)
+				}
 				if acct.Provider != store.PZCode {
 					a.LastCheckinDay = today
 				}

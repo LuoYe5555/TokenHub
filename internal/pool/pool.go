@@ -56,7 +56,7 @@ func (p *Pool) Providers() map[string]provider.Provider {
 }
 
 // shortAlias 模型前缀别名。
-var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen}
+var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama}
 
 // ResolveModel 解析 "provider:model" 前缀 / ModelRoutes / 默认提供商。
 // 兼容客户端自定义 slug 前缀（如 "custom-local:zcode:glm-5.3-flash"）：

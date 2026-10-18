@@ -5,6 +5,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,7 @@ func dayKey(t time.Time) string { return t.Format("2006-01-02") }
 // RunCheckinPass 签到/领取一轮。force=true 忽略去重（面板手动触发）。
 func (s *Scheduler) RunCheckinPass(ctx context.Context, force bool) {
 	today := dayKey(time.Now())
+	checked := 0 // 本轮已签到过的账号数（用于账号间随机间隔）
 	for _, acct := range s.store.All() {
 		if ctx.Err() != nil {
 			return
@@ -115,6 +117,15 @@ func (s *Scheduler) RunCheckinPass(ctx context.Context, force bool) {
 				continue
 			}
 		}
+		// 账号之间随机小憩 2~6 秒：避免多账号背靠背请求被上游活动限流(9074)一起盯上
+		if checked > 0 {
+			select {
+			case <-time.After(time.Duration(2000+rand.Intn(4000)) * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
+		}
+		checked++
 		already, msg, err := p.Checkin(ctx, acct)
 		// Checkin 内部可能补了 deviceId（trae 9004 根因），无论成败都落库
 		if did := acct.ExtraGet(store.ExtraTraeDeviceID); did != "" {

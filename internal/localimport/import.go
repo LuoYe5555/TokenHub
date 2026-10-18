@@ -3,6 +3,7 @@ package localimport
 
 import (
 	"encoding/json"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,17 @@ import (
 	"tokenhub/internal/logx"
 	"tokenhub/internal/store"
 )
+
+// genRandomDeviceID 生成 16 位数字 deviceId（与真实客户端同格式，44 开头）。
+// 一键导入绝不携带本机 Trae 的真实设备号：TokenHub 的签到/下单请求若被封号设备指纹，
+// 只会烧掉这个随机号，不会牵连本机 IDE 的机器码（用户红线 2026-10-18）。
+func genRandomDeviceID() string {
+	b := make([]byte, 14)
+	for i := range b {
+		b[i] = byte('0' + rand.Intn(10))
+	}
+	return "44" + string(b)
+}
 
 // AddAllUnique 把本机读到的账号并入仓库（按 provider+uid 去重），返回新增数。
 func AddAllUnique(st *store.Store, provider string, accounts []*store.Account) int {
@@ -135,7 +147,6 @@ func normalizeMs(v int64) int64 {
 var traeAppNames = []string{"TRAE SOLO CN", "Trae CN", "TRAE SOLO", "Trae"}
 
 const traeAuthKey = "iCubeAuthInfo://icube.cloudide"
-const traeDCPrefix = "iCubeAuthInfo://icube-dc:"
 
 func traeDataDir() string {
 	if v := os.Getenv("TRAE_HOME"); v != "" {
@@ -194,9 +205,9 @@ func TraeLocal() []*store.Account {
 	if acct.UID == "" {
 		acct.UID = uidFromTraeJWT(auth.Token)
 	}
-	if did := traeDeviceID(storage); did != "" {
-		acct.ExtraSet(store.ExtraTraeDeviceID, did)
-	}
+	// 不读取本机真实设备号（iCubeAuthInfo://icube-dc:*）：导入账号一律使用
+	// 随机生成的设备号，把 TokenHub 自动化请求与本机 IDE 的机器指纹隔离。
+	acct.ExtraSet(store.ExtraTraeDeviceID, genRandomDeviceID())
 	if strings.HasPrefix(auth.Host, "http") {
 		acct.ExtraSet(store.ExtraTraeAPIHost, auth.Host)
 	}

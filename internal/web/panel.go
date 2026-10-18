@@ -20,6 +20,7 @@ import (
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
+	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/zcode"
 	"tokenhub/internal/scheduler"
 	"tokenhub/internal/traemigrate"
@@ -168,6 +169,24 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("POST /api/panel/login/trae/callback", p.handleTraeLoginCallback)
 	api("POST /api/panel/login/zcode", p.handleZcodeLoginStart)
 	api("GET /api/panel/login/zcode/poll", p.handleZcodeLoginPoll)
+	api("POST /api/panel/qwen/browser/start", p.handleQwenBrowserStart)
+	api("GET /api/panel/qwen/browser/poll", p.handleQwenBrowserPoll)
+	api("POST /api/panel/qwen/verify/start", p.handleQwenVerifyStart)
+	api("GET /api/panel/qwen/verify/poll", p.handleQwenVerifyPoll)
+
+	// 千问风控回调：请求被 WAF punish 时把验证页地址记进账号，
+	// 面板千问卡片随即出现「🛡 过验证」按钮
+	qwen.OnPunish = func(acctID, punishURL string) {
+		_ = p.store.Mutate(acctID, func(a *store.Account) {
+			if a.Extra == nil {
+				a.Extra = map[string]string{}
+			}
+			if a.Extra["punishURL"] != punishURL {
+				logx.Warnf("qwen", "账号 %s 触发风控验证：面板卡片已提供「过验证」入口", a.ID)
+			}
+			a.Extra["punishURL"] = punishURL
+		})
+	}
 	api("POST /api/panel/import-local/workbuddy", p.handleImportLocalWB)
 	api("POST /api/panel/import-local/trae", p.handleImportLocalTrae)
 	api("POST /api/panel/import-local/zcode", p.handleZcodeImportLocal)
@@ -188,6 +207,7 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("PATCH /api/panel/shares/{id}", p.handleSharePatch)
 	api("DELETE /api/panel/shares/{id}", p.handleShareDelete)
 	api("GET /api/panel/usage", p.handleUsageList)
+	api("GET /api/panel/usage/stats", p.handleUsageStats)
 }
 
 // ── 公网分享（隧道） ──
@@ -245,6 +265,16 @@ func (p *Panel) handleUsageList(w http.ResponseWriter, r *http.Request) {
 		entries = []usagelog.Entry{}
 	}
 	writeJSON(w, map[string]any{"entries": entries, "total": total, "page": page, "pageSize": size})
+}
+
+// handleUsageStats 近 N 天按日×模型用量统计（趋势图/环形图用）。
+func (p *Panel) handleUsageStats(w http.ResponseWriter, r *http.Request) {
+	if p.ulog == nil {
+		writeJSON(w, map[string]any{"days": []any{}, "models": []any{}, "total": 0})
+		return
+	}
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	writeJSON(w, p.ulog.Stats(days))
 }
 
 func (p *Panel) handleShareCreate(w http.ResponseWriter, r *http.Request) {

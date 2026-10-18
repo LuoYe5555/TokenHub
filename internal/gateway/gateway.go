@@ -16,6 +16,7 @@ import (
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/shares"
+	"tokenhub/internal/tokensaver"
 	"tokenhub/internal/usagelog"
 )
 
@@ -138,6 +139,7 @@ type usageRecorder struct {
 	inner provider.Sink
 	mu    sync.Mutex
 	usage *provider.Usage
+	saved int64 // 网关层 token 优化节省的输入估算（Optimize 时写入）
 }
 
 func (u *usageRecorder) Delta(d provider.Delta)  { u.inner.Delta(d) }
@@ -190,6 +192,7 @@ func (g *Gateway) logUsage(r *http.Request, model, provName string, start time.T
 	}
 	if rec != nil {
 		e.PromptTokens, e.CompletionTokens, e.CacheReadTokens, e.CacheWriteTokens, e.TotalTokens = rec.pc()
+		e.SavedTokens = rec.saved
 	}
 	g.ulog.Add(e)
 }
@@ -246,6 +249,27 @@ func mapClientStatus(pe *provider.Error) int {
 	}
 }
 
+// optimizeReq 网关层 token 优化（确定性、无损语义）：JSON 紧凑化 +
+// 会话内重复内容折叠。返回优化后的请求体；解析失败时原样返回。
+func (g *Gateway) optimizeReq(model string, body []byte, rec *usageRecorder) []byte {
+	if !g.cfg.OptDedupOn() && !g.cfg.OptCompactJSONOn() {
+		return body
+	}
+	out, res := tokensaver.Optimize(body, tokensaver.Options{
+		Dedup:       g.cfg.OptDedupOn(),
+		CompactJSON: g.cfg.OptCompactJSONOn(),
+		MinChars:    500,
+	})
+	if rec != nil {
+		rec.saved = res.SavedTokens
+	}
+	if res.SavedTokens > 0 {
+		logx.Infof("gateway", "token 优化(%s): 紧凑 JSON %d 处 / 折叠重复 %d 处，省约 %d tokens",
+			model, res.Compacted, res.Deduped, res.SavedTokens)
+	}
+	return out
+}
+
 // ── OpenAI ──
 
 func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
@@ -290,6 +314,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		fl, _ := w.(http.Flusher)
 		sink := NewOpenAIStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
+		body = g.optimizeReq(model, body, rec)
 		err := g.pool.Chat(ctx, model, body, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -310,6 +335,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	}
 	sink := NewAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
+	body = g.optimizeReq(model, body, rec)
 	err = g.pool.Chat(ctx, model, body, rec)
 	if shareID != "" {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -638,6 +664,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		fl, _ := w.(http.Flusher)
 		sink := NewAnthropicStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
+		openaiReq = g.optimizeReq(model, openaiReq, rec)
 		err := g.pool.Chat(ctx, model, openaiReq, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -658,6 +685,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	sink := NewAnthropicAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
+	openaiReq = g.optimizeReq(model, openaiReq, rec)
 	if err := g.pool.Chat(ctx, model, openaiReq, rec); err != nil {
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
