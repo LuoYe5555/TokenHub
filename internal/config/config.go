@@ -17,9 +17,10 @@ const (
 	PWorkBuddy = "workbuddy"
 	PTrae      = "trae"
 	PZCode     = "zcode"
+	PQwen      = "qwen"
 )
 
-func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode} }
+func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen} }
 
 // ProviderConfig 单个提供商的开关与上游地址覆盖（上游接口变更时使用）。
 type ProviderConfig struct {

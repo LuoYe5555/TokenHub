@@ -15,6 +15,7 @@ const (
 	PWorkBuddy = "workbuddy"
 	PTrae      = "trae"
 	PZCode     = "zcode"
+	PQwen      = "qwen"
 )
 
 // QuotaPart 额度明细（权益包 / 额度窗口）。

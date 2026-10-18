@@ -594,8 +594,8 @@ func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode {
-		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode")
+	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode && in.Provider != store.PQwen {
+		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode / qwen")
 		return
 	}
 	if strings.TrimSpace(in.AccessToken) == "" && strings.TrimSpace(in.RefreshToken) == "" {
@@ -614,6 +614,11 @@ func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
 		Enabled:      true,
 		CreatedAt:    time.Now().Unix(),
 		Extra:        in.Extra,
+	}
+	// 千问网页版令牌无独立刷新凭据：RT 缺省时用 AT 顶上，
+	// 让「刷新token」按钮走 Refresh()（令牌有效性校验）而非报"需要重新登录"。
+	if in.Provider == store.PQwen && acct.RefreshToken == "" {
+		acct.RefreshToken = acct.AccessToken
 	}
 	if err := p.store.Upsert(acct); err != nil {
 		writeErr(w, 500, err.Error())

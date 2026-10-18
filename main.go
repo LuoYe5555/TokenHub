@@ -23,6 +23,7 @@ import (
 	"tokenhub/internal/localimport"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
+	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
 	"tokenhub/internal/provider/workbuddy"
 	"tokenhub/internal/provider/zcode"
@@ -78,6 +79,7 @@ func main() {
 	pl.Register(workbuddy.New(cfg))
 	pl.Register(trae.New(cfg))
 	pl.Register(zcode.New(cfg))
+	pl.Register(qwen.New(cfg))
 	zcode.WarmAppVersion()
 
 	// 启动即扫描本机已登录的客户端账号（静默导入，按 uid 去重）

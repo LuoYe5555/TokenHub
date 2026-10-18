@@ -51,7 +51,7 @@ const I18N = {
     share_title: '分享钥匙（发给别人的专用 Key）',
     share_hint: '每把钥匙可按提供商开关并设用量上限（按 token 计量；上限 0 = 不限）。WorkBuddy / Trae 的「积分」无法逐次读取，用 token 用量近似控制，建议设保守值。主 API Key 请勿外发，发这把专用钥匙即可。',
     share_create: '创建分享钥匙', share_name_ph: '名称（比如：给小明的）',
-    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限',
+    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限', share_limit_qw: 'tokens 上限',
     share_models_ph: '允许模型（逗号分隔，留空=全部）',
     share_none: '还没有分享钥匙，在下方创建一把',
     share_used: '已用', share_times: '次',
@@ -61,6 +61,12 @@ const I18N = {
     set_title: '设置', set_sub: '修改后点击保存；监听地址与端口需重启生效',
     save: '保存', cancel: '取消', close: '关闭', confirm: '确认',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode（智谱 GLM）',
+    prov_qwen: '千问 Qwen（网页版）',
+    login_qw_title: '添加千问网页版账号',
+    login_qw_s1: '浏览器登录 chat.qwen.ai（网页版对话）',
+    login_qw_s2: 'F12 → 网络(Network) → 随便发一条消息 → 找到 chat/completions 请求 → 复制请求头 Authorization 里 Bearer 后面的令牌',
+    login_qw_token: 'Access Token（Bearer 后面那串）', login_qw_nick: '备注名（可选）',
+    login_qw_save: '保存账号', login_qw_saved: '千问账号已添加',
     prov_off: '已关闭',
     accounts: '账号', active: '可用', remain: '剩余额度',
     acct_add: '添加账号', acct_login: '登录添加', acct_manual: '手动导入', acct_import_local: '从本机 ZCode 导入',
@@ -188,7 +194,7 @@ const I18N = {
     share_title: 'Share keys (dedicated keys for others)',
     share_hint: 'Each key can toggle providers and cap usage (measured in tokens; 0 = unlimited). WorkBuddy / Trae points cannot be read per-request, so token usage is used as an approximation — set conservative limits. Never send out your main API Key; send a share key instead.',
     share_create: 'Create share key', share_name_ph: 'Name (e.g. for Alice)',
-    share_limit_wb: 'points cap', share_limit_trae: 'points cap', share_limit_zc: 'tokens cap',
+    share_limit_wb: 'points cap', share_limit_trae: 'points cap', share_limit_zc: 'tokens cap', share_limit_qw: 'tokens cap',
     share_models_ph: 'Allowed models (comma-separated, empty = all)',
     share_none: 'No share keys yet — create one below',
     share_used: 'Used', share_times: ' reqs',
@@ -198,6 +204,12 @@ const I18N = {
     set_title: 'Settings', set_sub: 'Click Save after changes; host/port need a restart',
     save: 'Save', cancel: 'Cancel', close: 'Close', confirm: 'OK',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode (GLM)',
+    prov_qwen: 'Qwen (Web)',
+    login_qw_title: 'Add Qwen Web Account',
+    login_qw_s1: 'Sign in at chat.qwen.ai in your browser',
+    login_qw_s2: 'F12 → Network → send any message → find the chat/completions request → copy the token after "Bearer " in the Authorization request header',
+    login_qw_token: 'Access Token (string after Bearer)', login_qw_nick: 'Nickname (optional)',
+    login_qw_save: 'Save account', login_qw_saved: 'Qwen account added',
     prov_off: 'disabled',
     accounts: 'Accounts', active: 'Active', remain: 'Remaining',
     acct_add: 'Add account', acct_login: 'Login', acct_manual: 'Manual import', acct_import_local: 'Import from local ZCode',
@@ -720,6 +732,7 @@ function providerMeta(name) {
     workbuddy: { label: t('prov_workbuddy'), icon: '/icons/workbuddy.png', color: '#3ad98a' },
     trae: { label: t('prov_trae'), icon: '/icons/trae.png', color: '#4f8cff' },
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
+    qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
   };
   return map[name] || { label: name, icon: '/favicon.svg', color: '#8b93a5' };
 }
@@ -733,7 +746,7 @@ function renderProviders() {
   if (!overview) return;
   const box = $('#provCards');
   box.innerHTML = '';
-  for (const name of ['workbuddy', 'trae', 'zcode']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
     const s = (overview.summary && overview.summary[name]) || { accounts: 0, active: 0, remain: 0, total: 0, unit: '' };
     const meta = providerMeta(name);
     const card = document.createElement('div');
@@ -858,7 +871,7 @@ function renderAccounts() {
   const box = $('#acctSections');
   box.innerHTML = '';
   renderZcodePending(box);
-  for (const name of ['workbuddy', 'trae', 'zcode']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
     const meta = providerMeta(name);
     const list = (overview.accounts || []).filter(a => a.provider === name);
     const sec = document.createElement('div');
@@ -919,7 +932,7 @@ function acctCard(a) {
     </div>
     <div class="acts">
       <button class="sm" data-act="quota">🔄 ${t('act_quota')}</button>
-      <button class="sm" data-act="checkin">🎁 ${t('act_checkin')}</button>
+      ${a.provider !== 'qwen' ? `<button class="sm" data-act="checkin">🎁 ${t('act_checkin')}</button>` : ''}
       <button class="sm" data-act="refresh">🔑 ${t('act_refresh')}</button>
       ${a.hasRefresh ? `<button class="sm" data-act="copyrt">📋 ${t('act_copy_rt')}</button>` : ''}
       ${a.provider === 'trae' ? `<button class="sm" data-act="switchide" title="${esc(t('act_switch_ide_tip'))}">⚡ ${t('act_switch_ide')}</button>
@@ -1007,6 +1020,7 @@ function openAddModal(provider) {
   if (provider === 'workbuddy') return addModalWB();
   if (provider === 'trae') return addModalTrae();
   if (provider === 'zcode') return addModalZcode();
+  if (provider === 'qwen') return addModalQwen();
 }
 
 function steps(items) {
@@ -1164,12 +1178,40 @@ function addModalZcode() {
   $('#zcManual').addEventListener('click', () => manualModal('zcode'));
 }
 
+/* Qwen Web */
+function addModalQwen() {
+  showModal(t('login_qw_title'), `
+    ${steps([t('login_qw_s1'), t('login_qw_s2')])}
+    <div class="field" style="margin-top:12px"><label>${t('login_qw_token')}</label>
+      <input type="password" id="qwToken" placeholder="eyJhbGciOi...">
+    </div>
+    <div class="field"><label>${t('login_qw_nick')}</label><input type="text" id="qwNick"></div>
+    <button class="primary" id="qwSave">${t('login_qw_save')}</button>
+    <div class="hint" id="qwStatus"></div>
+  `);
+  $('#qwSave').addEventListener('click', async () => {
+    const token = $('#qwToken').value.trim();
+    if (!token) { $('#qwStatus').textContent = t('login_qw_token'); return; }
+    try {
+      await post('/api/panel/account', {
+        provider: 'qwen',
+        accessToken: token,
+        refreshToken: token,
+        nickname: $('#qwNick').value.trim(),
+      });
+      toast(t('login_qw_saved'));
+      loadOverview();
+      setTimeout(closeModal, 800);
+    } catch (e) { $('#qwStatus').textContent = e.message; }
+  });
+}
+
 /* Manual import */
 function manualModal(provider) {
   showModal(t('manual_title'), `
     <div class="field"><label>${t('manual_provider')}</label>
       <select id="mProvider">
-        ${['workbuddy', 'trae', 'zcode'].map(pv => `<option value="${pv}" ${pv === provider ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}
+        ${['workbuddy', 'trae', 'zcode', 'qwen'].map(pv => `<option value="${pv}" ${pv === provider ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>${t('manual_realm')}</label><input type="text" id="mRealm" placeholder="cn / global / bigmodel / zai"></div>
@@ -1224,7 +1266,7 @@ async function renderModels(cached) {
   const chips = $('#modelChips');
   chips.innerHTML = '';
   const all = modelCache || {};
-  for (const name of ['workbuddy', 'trae', 'zcode']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen']) {
     const meta = providerMeta(name);
     for (const m of (all[name] || [])) {
       const chip = document.createElement('span');
@@ -1283,7 +1325,7 @@ function renderSettings() {
     settingRow(t('set_listen_host'), t('set_listen_host_d'), `<input type="text" id="sHost" value="${esc(c.host)}">`),
     settingRow(t('set_listen_port'), '', `<input type="number" id="sPort" value="${c.port}">`),
     settingRow(t('set_api_key'), '', `<div class="keyline"><input type="text" id="sKey" value="${esc(c.apiKey)}"><button class="sm" id="sRegen">${t('set_regen_key')}</button></div>`),
-    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
+    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode', 'qwen'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
     settingRow(t('set_auto_checkin'), t('set_auto_checkin_d'), `<label class="switch"><input type="checkbox" id="sAutoCheckin" ${c.autoCheckin ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_wb_keepalive'), t('set_wb_keepalive_d'), `<label class="switch"><input type="checkbox" id="sWbKeep" ${c.wbIntlKeepalive ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_zcode_claim'), t('set_zcode_claim_d'), `<label class="switch"><input type="checkbox" id="sZcClaim" ${c.zcodeAutoClaim ? 'checked' : ''}><i></i></label>`),
@@ -1461,9 +1503,9 @@ function renderUsageLog(list) {
 }
 setInterval(() => { if (usageLogPage === 1) loadUsageLog(); }, 10000);
 
-const SHARE_PROVS = ['workbuddy', 'trae', 'zcode'];
+const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen'];
 function shareLimitLabel(pv) {
-  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : t('share_limit_zc');
+  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : t('share_limit_zc');
 }
 
 async function loadShares() {
