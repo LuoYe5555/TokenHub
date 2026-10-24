@@ -22,6 +22,12 @@
 //     模型的思考过程回显，上游请求从不需要（各 provider 均只在响应
 //     里输出、不在请求里读取），客户端误回传时纯属浪费。
 //
+//  6. 近重复工具结果折叠 —— 同一工具前后多次调用的结果高度相似时
+//     （典型：agent 改了一行后重读文件、或换 offset/limit 读同一份
+//     大文件——参数变了导致第 3 条的"同参淘汰"漏网），只保留最新
+//     一份，旧的换成短标记。按"行多重集相似度 ≥ 90%"判定，链式比对
+//     （每个旧版本跟它后面最近保留的版本比），支持文件连续演变。
+//
 // 明确不做的（会改变效果，故不做）：语义缓存、截断/摘要工具输出、
 // 空白行规整（编码 agent 依赖原文格式做补丁）、模型路由。
 package tokensaver
@@ -38,6 +44,7 @@ import (
 type Options struct {
 	Dedup       bool // 折叠会话内重复内容
 	CompactJSON bool // JSON 紧凑化
+	NearDup     bool // 近重复工具结果折叠（同一工具、内容高度相似的旧结果）
 	MinChars    int  // 默认 500
 }
 
@@ -50,6 +57,7 @@ type Result struct {
 	Staled      int   // 淘汰的过期工具结果条数
 	ImagesDedup int   // 折叠的重复图片张数
 	Stripped    int   // 剥离的 reasoning 字段条数
+	NearDuped   int   // 折叠的近重复工具结果条数
 }
 
 // dedupMark 替换重复内容用的短标记（模型可读：告知完整内容仍在上下文）。
@@ -58,11 +66,24 @@ const dedupMark = "[TokenHub 已折叠重复内容：本条消息与本次对话
 // staleMark 替换过期工具结果的短标记。
 const staleMark = "[TokenHub 已省略过期结果：同一工具以相同参数再次调用过，最新结果见下方对应条目，此处旧结果已无参考价值]"
 
+// nearDupMark 替换近重复工具结果的短标记。
+const nearDupMark = "[TokenHub 已省略近似重复的旧结果：本结果与上下文中最新一次同名工具调用的结果高度相似（通常为同一内容的旧版本或不同参数的重复读取），差异请以最新结果为准]"
+
 // imgMark 替换重复图片的文字标记。
 const imgMark = "[TokenHub 已省略重复图片：与上下文中最新一张完全相同，图片内容保留在最新一处]"
 
 // staleMinChars 过期工具结果淘汰的最小内容长度（字符）。
 const staleMinChars = 300
+
+// nearDupMinChars 近重复折叠的最小内容长度（字符）。短结果折叠收益太小，
+// 且误折叠风险相对更高。
+const nearDupMinChars = 1500
+
+// nearDupThreshold 行多重集相似度阈值：公共行占比 ≥ 此值判为近重复。
+const nearDupThreshold = 0.9
+
+// nearDupMaxLines 相似度比对时每条文本最多取的行数（防超大文件拖慢请求）。
+const nearDupMaxLines = 20000
 
 // EstTokens 项目通用的 token 粗估口径（与 count_tokens 一致）：
 // 中英混合按 runes/2 + bytes/6。
@@ -173,6 +194,11 @@ func Optimize(body []byte, opt Options) ([]byte, Result) {
 	// ── Pass 3: 过期工具结果淘汰（同工具同参的旧调用结果） ──
 	if opt.Dedup {
 		foldStaleToolResults(msgs, &res)
+		// ── Pass 6: 近重复工具结果折叠（同工具、内容高度相似的旧结果，
+		//    覆盖"参数变了但内容基本没变"的漏网场景） ──
+		if opt.NearDup {
+			foldNearDupToolResults(msgs, &res)
+		}
 		// ── Pass 4: 重复图片折叠 ──
 		foldDupImages(msgs, &res)
 		// ── Pass 5: 剥离历史 reasoning 回显字段 ──
@@ -288,6 +314,144 @@ func foldStaleToolResults(msgs []any, res *Result) {
 		res.Staled++
 		res.SavedChars += int64(len(o.occ.text) - len(staleMark))
 	}
+}
+
+// foldNearDupToolResults 近重复工具结果折叠：同一工具前后多次调用的结果
+// 高度相似（≥90% 的行相同）时，只保留最新一份，旧的换成短标记。
+// 与 foldStaleToolResults 互补：那条管"参数完全相同的重复调用"，
+// 这条管"参数不同但读到的内容基本没变"（重读改动过的文件、换 offset
+// 读同一份大文件等）。链式比对：从最新往回扫，每个旧版本跟它后面
+// 最近一个【保留】的版本比，相似则折叠、不相似则自身成为新的参照——
+// 这样文件连续演变（A→B→C）时 A 也能被正确折叠。
+func foldNearDupToolResults(msgs []any, res *Result) {
+	// 1) tool_call_id → 工具名
+	idName := map[string]string{}
+	for _, mv := range msgs {
+		m, ok := mv.(map[string]any)
+		if !ok {
+			continue
+		}
+		tcs, ok := m["tool_calls"].([]any)
+		if !ok {
+			continue
+		}
+		for _, tv := range tcs {
+			tc, ok := tv.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := tc["id"].(string)
+			fn, _ := tc["function"].(map[string]any)
+			if id == "" || fn == nil {
+				continue
+			}
+			if name, _ := fn["name"].(string); name != "" {
+				idName[id] = name
+			}
+		}
+	}
+	if len(idName) == 0 {
+		return
+	}
+	// 2) 按工具分组收集够长的 tool 消息（倒序扫描做链式折叠）
+	type occ struct {
+		m    map[string]any
+		text string
+	}
+	groups := map[string][]occ{}
+	var nameOrder []string // 保证输出确定性
+	for _, mv := range msgs {
+		m, ok := mv.(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := m["role"].(string); role != "tool" {
+			continue
+		}
+		id, _ := m["tool_call_id"].(string)
+		name, ok := idName[id]
+		if !ok {
+			continue
+		}
+		txt, _, ok := contentText(m)
+		if !ok || utf8.RuneCountInString(txt) < nearDupMinChars {
+			continue
+		}
+		if txt == staleMark || txt == dedupMark || txt == nearDupMark {
+			continue // 已被前面的 pass 折叠过
+		}
+		if _, seen := groups[name]; !seen {
+			nameOrder = append(nameOrder, name)
+		}
+		groups[name] = append(groups[name], occ{m: m, text: txt})
+	}
+	// 3) 每组从最新往回链式比对折叠
+	for _, name := range nameOrder {
+		g := groups[name]
+		if len(g) < 2 {
+			continue
+		}
+		ref := g[len(g)-1] // 最新一份永远保留，作为初始参照
+		for i := len(g) - 2; i >= 0; i-- {
+			o := g[i]
+			if lineSimilarity(o.text, ref.text) >= nearDupThreshold {
+				setContent(o.m, -1, nearDupMark)
+				res.NearDuped++
+				res.SavedChars += int64(len(o.text) - len(nearDupMark))
+			} else {
+				ref = o // 不相似：旧版本成为更旧版本的比对参照
+			}
+		}
+	}
+}
+
+// lineSimilarity 行多重集相似度：两条文本按行拆开后，公共行（按出现次数
+// 计）占较长一方的比例。O(n) 且对"整份文件 + 少量行改动"高度敏感。
+func lineSimilarity(a, b string) float64 {
+	la, lb := splitLines(a), splitLines(b)
+	if len(la) == 0 || len(lb) == 0 {
+		return 0
+	}
+	if len(la) > nearDupMaxLines {
+		la = la[:nearDupMaxLines]
+	}
+	if len(lb) > nearDupMaxLines {
+		lb = lb[:nearDupMaxLines]
+	}
+	cnt := map[string]int{}
+	for _, l := range lb {
+		cnt[l]++
+	}
+	common := 0
+	for _, l := range la {
+		if cnt[l] > 0 {
+			common++
+			cnt[l]--
+		}
+	}
+	n := len(la)
+	if len(lb) > n {
+		n = len(lb)
+	}
+	return float64(common) / float64(n)
+}
+
+// splitLines 按换行拆行并去掉行尾 \r 与首尾空白行（空白差异不应拉低相似度）。
+func splitLines(s string) []string {
+	raw := strings.Split(s, "\n")
+	lines := make([]string, 0, len(raw))
+	for _, l := range raw {
+		l = strings.TrimRight(l, "\r")
+		lines = append(lines, l)
+	}
+	// 去掉首尾空行，中间空行保留
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 // foldDupImages 重复图片折叠：image_url 完全相同的图片块只保留最新一处，

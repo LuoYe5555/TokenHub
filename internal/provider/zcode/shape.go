@@ -44,10 +44,30 @@ func loadShape() *planShape {
 
 var dateRe = regexp.MustCompile(`Today's date is [^.]+\.`)
 
+// toolSteering 追加在注入 system 末尾：上游端点内置 webReader/webSearch 等服务端工具，
+// GLM 模型按训练习惯会用 webReader 去"读本地文件"（file:// 与本地路径必然 400），
+// 或假装"找不到文件工具"反复空搜。这里明确指定本地操作的唯一正确工具来源。
+const toolSteering = `
+# Local Tool Environment (IMPORTANT — read carefully)
+- For ANY local file or terminal operation (reading/writing/editing the user's files, searching the project, running commands), you MUST use the tools provided in THIS request's tools parameter (names vary by client: Read, Write, Edit, Glob, Grep, Bash, PowerShell, etc.). They are already available and callable directly — never claim you cannot find them.
+- Z.ai built-in tools such as webReader / webSearch are WEB-ONLY: they fetch remote http(s) URLs and CANNOT access local files. Calls with file:// URLs, local paths (C:/..., /home/..., workspace paths) or localhost pages always fail — never use them for local files.
+- To inspect the user's project, use the provided file tools (Glob/Grep/Read) or the shell tool, NOT webReader.`
+
+// tsHintText 追加到 ToolSearch 工具的 description 末尾（实验性）：WorkBuddy 的
+// ToolSearch 只索引 MCP 插件工具，内置 Read/Write/Bash 已加载不在索引里，模型
+// 搜"write file"只搜到表格/邮件插件后会误判自己没有文件工具。改这里而不改
+// system 是因为 2026-10-24 实测 system 追加任何内容都会触发上游 3007 风控；
+// 工具定义是否参与风控校验未验证，故默认关闭。
+const tsHintText = `
+
+IMPORTANT: ToolSearch only indexes optional MCP/plugin tools (spreadsheets, mail, etc.). The core tools (Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, WebSearch, Agent, Task*) are ALREADY fully loaded in this request's tools array — call them DIRECTLY without searching. Never conclude a tool is missing just because ToolSearch does not return it; never claim you only have draft/table/image tools.`
+
 // applyShape 注入客户端请求形状（风控通过票，移植自 CreditDaddy buildPlanRequest）。
 // sessionHex 为会话标识（真实客户端在一个会话内保持不变；按账号稳定可提升上游
 // prompt 缓存亲缘，传空则退化为每次随机）。
-func applyShape(body map[string]any, mode, sessionHex string) {
+// hint=true 时在 system 末尾追加本地工具引导（2026-10-24 实测必触发 3007，禁用）。
+// tsHint=true 时给 ToolSearch 的 description 追加说明（是否触发风控待验证，默认关）。
+func applyShape(body map[string]any, mode, sessionHex string, hint, tsHint bool) {
 	s := loadShape()
 	if s == nil || mode == "off" {
 		return
@@ -57,7 +77,24 @@ func applyShape(body map[string]any, mode, sessionHex string) {
 		existing := collectSystem(body)
 		body["system"] = append(append([]map[string]any{}, s.System...), existing...)
 	default: // overwrite
-		body["system"] = s.System
+		body["system"] = append([]map[string]any{}, s.System...)
+	}
+	if hint {
+		// 末尾追加本地工具引导（放最后 = 最近因优先级最高）
+		body["system"] = append(body["system"].([]map[string]any), map[string]any{
+			"type": "text", "text": toolSteering,
+		})
+	}
+	if tsHint {
+		if tools, ok := body["tools"].([]map[string]any); ok {
+			for _, t := range tools {
+				if t["name"] == "ToolSearch" {
+					if d, _ := t["description"].(string); d != "" {
+						t["description"] = d + tsHintText
+					}
+				}
+			}
+		}
 	}
 	// 首条 user 消息前插入 currentDate 提醒块
 	reminder := s.ReminderText

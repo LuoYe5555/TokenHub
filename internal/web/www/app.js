@@ -5,15 +5,15 @@
 const I18N = {
   zh: {
     nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_logs: '运行日志', nav_settings: '设置',
-    usage_title: '用量与占比', usage_sub: '账号额度余量与最近调用分布（本地环形日志，最多 500 条）',
-    usage_today: '今日 tokens', usage_week: '近 7 天 tokens', usage_requests: '总请求数', usage_tracked: '统计自',
+    usage_title: '用量与占比', usage_sub: '账号额度余量与调用分布（总请求数来自持久台账，全量统计；下方明细为最近 500 条）',
+    usage_today: '今日 tokens', usage_week: '近 7 天 tokens', usage_requests: '总请求数', usage_tracked: '明细缓冲',
     usage_cache_hit: '缓存命中', usage_cache_read: '缓存读', usage_cache_write: '缓存写', usage_cache_short: '缓存', usage_in: '输入', usage_out: '输出',
     usage_quota_title: '账号额度与占比',
     usage_by_caller: '按调用方', usage_by_provider: '按提供商', usage_by_model: '按模型（Top 8）',
     usage_owner: '主人（主 Key）', usage_no_quota: '暂无额度快照，点账号「查额度」后展示', usage_total: '共',
     usage_until: '到期', usage_req_unit: ' 次', usage_empty: '暂无调用记录',
     usage_reload: '刷新', usage_reloading: '刷新中…',
-    usage_stats: '用量统计', us_7d: '近 7 日', us_30d: '近 30 日', us_other: '其他', us_no_data: '暂无调用数据',
+    usage_stats: '用量统计', us_7d: '近 7 日', us_30d: '近 30 日', us_all: '全部', us_days_fmt: '近 {n} 天', us_other: '其他', us_no_data: '暂无调用数据',
     dash_title: '总览', dash_sub: '账号额度与接口状态一览',
     dash_refresh_quotas: '刷新全部额度', dash_checkin_all: '立即签到/领取',
     dash_refresh_tokens: '刷新全部token', refresh_tokens_busy: '正在刷新全部token…',
@@ -139,7 +139,14 @@ const I18N = {
     set_quota_refresh: '额度定时刷新（秒，可填 0.5，0=关闭）',
     set_opt_compact: 'Token 优化：JSON 紧凑化', set_opt_compact_d: '压平请求里 pretty-print 的 JSON（工具结果/工具参数），只删语法空白、信息零丢失，省输入 token',
     set_opt_dedup: 'Token 优化：重复内容折叠', set_opt_dedup_d: '同一次对话里完全相同的大段内容（重复读文件/重复命令输出）只保留最新一份，旧的出现折叠成一行标记；完整内容仍在上下文，不影响效果',
-    us_saved: 'Token 优化已节省', us_saved_tip: '近 {n} 天网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
+    set_opt_neardup: 'Token 优化：近重复折叠（深度）', set_opt_neardup_d: '同一工具前后调用结果 ≥90% 行相同时只留最新一份（如改一行后重读文件、换参数重读同一份大文件），旧的折叠成标记；比"重复内容折叠"多救回一倍以上 token，模型以最新结果为准',
+    set_accel: '网络加速（本地加速器）', set_accel_d: 'PAC 选择性加速：仅 WorkBuddy 国际站、GitHub 等名单域名走本地加速代理（DNS 优选 + 多 IP 连接竞速，只中继不解密不装证书），国内网站与内网全部直连不受影响。已兼容其他加速器：开启前自动备份你的代理/PAC 设置（Watt Toolkit、Clash 等）并串联保留，关闭时一键还原',
+    set_pj: '破甲实验（提示词对抗研究）',
+    set_reqdump: '请求快照（诊断）', set_reqdump_d: '开启后把客户端发来的原始请求落盘到 data/reqdump（只留最近 8 份），日志会打印每次请求的工具数量与名称。用于诊断「模型说找不到工具」这类客户端侧问题，日常使用保持关闭',
+    set_pj_d: '默认关闭。开启后仅对本地 Ollama 模型生效：把研究模板套在你的最后一条消息上，测试本地模型安全对齐的健壮性（garak 红队思路）。选「自动」时按模型探测哪个模板有效并记忆（存 data/pj_auto.json）。绝不作用于任何网络提供商。不保证破甲成功——效果因模型而异。',
+    set_pj_off: '关闭（默认）',
+    set_pj_auto: '自动（按模型探测模板）',
+    us_saved: 'Token 优化已节省', us_saved_tip: '{n}的网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
     set_trae_switch: 'Trae 积分耗尽自动换号',
     set_trae_switch_d: '需开启额度定时刷新。刷新时发现某 Trae 账号积分耗尽，自动切换到其他账号（无需等请求报错）；积分恢复后自动回归',
     set_refresh_skew: 'token 提前刷新（分钟）',
@@ -156,15 +163,15 @@ const I18N = {
   },
   en: {
     nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_logs: 'Logs', nav_settings: 'Settings',
-    usage_title: 'Usage & Quotas', usage_sub: 'Account quota remainder and recent call distribution (local ring buffer, max 500 entries)',
-    usage_today: 'Today tokens', usage_week: '7-day tokens', usage_requests: 'Total requests', usage_tracked: 'from',
+    usage_title: 'Usage & Quotas', usage_sub: 'Account quota remainder and call distribution (total requests from the persistent ledger, all-time; the list below shows the latest 500 entries)',
+    usage_today: 'Today tokens', usage_week: '7-day tokens', usage_requests: 'Total requests', usage_tracked: 'detail buffer',
     usage_cache_hit: 'Cache hit', usage_cache_read: 'cache read', usage_cache_write: 'cache write', usage_cache_short: 'cache', usage_in: 'in', usage_out: 'out',
     usage_quota_title: 'Account quota & ratio',
     usage_by_caller: 'By caller', usage_by_provider: 'By provider', usage_by_model: 'By model (Top 8)',
     usage_owner: 'Owner (master key)', usage_no_quota: 'No quota snapshot yet; click "Quota" on an account first', usage_total: 'total',
     usage_until: 'until', usage_req_unit: ' req', usage_empty: 'No calls recorded',
     usage_reload: 'Refresh', usage_reloading: 'Refreshing…',
-    usage_stats: 'Usage stats', us_7d: '7 days', us_30d: '30 days', us_other: 'Other', us_no_data: 'No calls yet',
+    usage_stats: 'Usage stats', us_7d: '7 days', us_30d: '30 days', us_all: 'All', us_days_fmt: 'last {n} days', us_other: 'Other', us_no_data: 'No calls yet',
     dash_title: 'Dashboard', dash_sub: 'Account quotas and API status at a glance',
     dash_refresh_quotas: 'Refresh quotas', dash_checkin_all: 'Check in / claim now',
     dash_refresh_tokens: 'Refresh all tokens', refresh_tokens_busy: 'Refreshing all tokens…',
@@ -293,7 +300,13 @@ const I18N = {
     set_quota_refresh: 'Quota auto refresh (seconds, 0.5 allowed, 0=off)',
     set_opt_compact: 'Token saver: compact JSON', set_opt_compact_d: 'Minify pretty-printed JSON in tool results/arguments; syntax whitespace only, zero information loss',
     set_opt_dedup: 'Token saver: fold duplicates', set_opt_dedup_d: 'Byte-identical large content repeated in one conversation (re-read files, repeated command output) keeps only the latest copy; earlier ones become a one-line marker. Full content stays in context',
-    us_saved: 'Saved by token optimization', us_saved_tip: 'Estimated input tokens saved by gateway optimization (JSON compaction + duplicate folding) in the last {n} days',
+    set_opt_neardup: 'Token saver: near-duplicate folding (deep)', set_opt_neardup_d: 'When consecutive results of the same tool share ≥90% identical lines (e.g. re-reading a file after a one-line edit), older copies are folded into a marker; recovers far more tokens than exact-duplicate folding. The model uses the newest result',
+    set_accel: 'Network accelerator (local)', set_accel_d: 'Selective PAC acceleration: only listed domains (WorkBuddy international, GitHub, etc.) go through the local accelerator proxy (DNS optimization + racing TCP connections, relay only, no decryption/certificates); domestic sites and intranet stay direct and untouched. Compatible with other accelerators: your existing proxy/PAC settings (Watt Toolkit, Clash, etc.) are backed up and chained, restored on turn-off',
+    set_pj: 'Armor-piercing experiment (prompt adversarial research)',
+    set_reqdump: 'Request snapshot (diagnostics)', set_reqdump_d: "When enabled, raw client requests are saved to data/reqdump (last 8 kept) and the log prints each request's tool count and names. For diagnosing client-side issues like \"model says it can't find tools\". Keep off for daily use",
+    set_pj_d: 'Off by default. When enabled, applies ONLY to local Ollama models: wraps a research template around your last message to test the robustness of the local model\'s safety alignment (garak-style red teaming). Never applies to any network provider.',
+    set_pj_off: 'Off (default)',
+    us_saved: 'Saved by token optimization', us_saved_tip: 'Estimated input tokens saved by gateway optimization (JSON compaction + duplicate folding), {n}',
 
     set_trae_switch: 'Auto-switch when Trae credits exhausted',
     set_trae_switch_d: 'Requires quota auto refresh. When a Trae account runs out of credits, it is switched out automatically (no need to wait for a failed request); it returns once credits recover',
@@ -683,7 +696,7 @@ async function loadUsage() {
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_week')}</div>
       <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
-      <div style="font-size:22px;font-weight:600">${tks.requests || 0}</div>
+      <div style="font-size:22px;font-weight:600">${fmtNum(tks.allReqs ?? tks.requests ?? 0)}</div>
       <div style="opacity:.5;font-size:11px">${t('usage_tracked')} ${tks.tracked || 0}</div></div>`;
   // 各账号额度与占比：折叠为一行总积分，点右侧小三角展开完整明细
   const accs = d.accounts || [];
@@ -1447,6 +1460,10 @@ function renderSettings() {
     settingRow(t('set_expose_prefix'), '', `<label class="switch"><input type="checkbox" id="sExpose" ${c.exposePrefixModels ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_opt_compact'), t('set_opt_compact_d'), `<label class="switch"><input type="checkbox" id="sOptCompact" ${(c.optCompactJSON !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_opt_dedup'), t('set_opt_dedup_d'), `<label class="switch"><input type="checkbox" id="sOptDedup" ${(c.optDedup !== false) ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_opt_neardup'), t('set_opt_neardup_d'), `<label class="switch"><input type="checkbox" id="sOptNearDup" ${(c.optNearDup !== false) ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_accel'), t('set_accel_d'), `<label class="switch"><input type="checkbox" id="sAccel" ${c.accel ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_reqdump'), t('set_reqdump_d'), `<label class="switch"><input type="checkbox" id="sReqDump" ${c.reqDump ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_pj'), t('set_pj_d'), `<select id="sPJ">${['off', 'auto', '3_liner', 'antigpt', 'betterdan', 'aim'].map(v => `<option value="${v}" ${(c.pjMode || 'off') === v ? 'selected' : ''}>${v === 'off' ? t('set_pj_off') : (v === 'auto' ? t('set_pj_auto') : v)}</option>`).join('')}</select>`),
   ].join('');
   $('#sRegen').addEventListener('click', () => {
     const bytes = new Uint8Array(12);
@@ -1472,10 +1489,19 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     exposePrefixModels: $('#sExpose').checked,
     optCompactJSON: $('#sOptCompact').checked,
     optDedup: $('#sOptDedup').checked,
+    optNearDup: $('#sOptNearDup').checked,
+    pjMode: $('#sPJ').value,
+    reqDump: $('#sReqDump').checked,
   };
   try {
     await post('/api/panel/config', body);
     cfgData = Object.assign(cfgData, body);
+    // 网络加速是即时生效项：配置保存后同步启停（含系统代理接管/还原）
+    try {
+      const accelOn = $('#sAccel').checked;
+      await post('/api/panel/accel', { on: accelOn });
+      cfgData.accel = accelOn;
+    } catch (e2) { toast(e2.message, true); }
     toast(t('saved_ok'));
   } catch (e) { toast(e.message, true); }
 });
@@ -1689,7 +1715,7 @@ function renderUsageTrend(d) {
     <div style="border:1px solid var(--border,#232833);border-radius:10px;padding:10px 8px 4px;background:rgba(255,255,255,.02)">
       <div style="display:flex;gap:14px;flex-wrap:wrap;padding:0 8px 6px">${legend}</div>
       <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${grid}${xt}${lines}</svg>
-    </div>${d.savedTotal > 0 ? `<div class="hint" style="margin-top:6px;display:flex;align-items:center;gap:6px" title="${esc((t('us_saved_tip') || '').replace('{n}', usageStatsDays))}">🌱 ${esc(t('us_saved'))}: <b style="font-family:var(--mono)">≈ ${fmtNum(d.savedTotal)}</b> tokens</div>` : ''}`;
+    </div>${(d.savedTotal > 0 || d.reqs > 0) ? `<div class="hint" style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap" title="${esc((t('us_saved_tip') || '').replace('{n}', usageStatsDays < 0 ? t('us_all') : (t('us_days_fmt') || '近 {n} 天').replace('{n}', usageStatsDays)))}">${d.reqs > 0 ? `<span>${esc(t('usage_requests'))}: <b style="font-family:var(--mono)">${fmtNum(d.reqs)}</b>${esc(t('usage_req_unit'))}</span>` : ''}${d.savedTotal > 0 ? `<span>🌱 ${esc(t('us_saved'))}: <b style="font-family:var(--mono)">≈ ${fmtNum(d.savedTotal)}</b> tokens</span>` : ''}</div>` : ''}`;
 }
 
 function renderUsageDonut(d) {
@@ -1730,23 +1756,28 @@ function renderUsageDonut(d) {
 }
 
 function usRangeStyle() {
-  const b7 = $('#usRange7'), b30 = $('#usRange30');
-  if (!b7 || !b30) return;
+  const b7 = $('#usRange7'), b30 = $('#usRange30'), bAll = $('#usRangeAll');
+  if (!b7 || !b30 || !bAll) return;
   b7.textContent = t('us_7d');
   b30.textContent = t('us_30d');
+  bAll.textContent = t('us_all');
+  const act = 'var(--accent,#4f8cff)';
   b7.style.opacity = usageStatsDays === 7 ? '1' : '.45';
   b30.style.opacity = usageStatsDays === 30 ? '1' : '.45';
-  b7.style.borderColor = usageStatsDays === 7 ? 'var(--accent,#4f8cff)' : '';
-  b30.style.borderColor = usageStatsDays === 30 ? 'var(--accent,#4f8cff)' : '';
+  bAll.style.opacity = usageStatsDays < 0 ? '1' : '.45';
+  b7.style.borderColor = usageStatsDays === 7 ? act : '';
+  b30.style.borderColor = usageStatsDays === 30 ? act : '';
+  bAll.style.borderColor = usageStatsDays < 0 ? act : '';
 }
 
 function initUsageStats() {
-  const b7 = $('#usRange7'), b30 = $('#usRange30');
-  if (!b7 || !b30) return;
+  const b7 = $('#usRange7'), b30 = $('#usRange30'), bAll = $('#usRangeAll');
+  if (!b7 || !b30 || !bAll) return;
   if (!b7.dataset.init) {
     b7.dataset.init = '1';
     b7.addEventListener('click', () => { usageStatsDays = 7; usRangeStyle(); loadUsageStats(); });
     b30.addEventListener('click', () => { usageStatsDays = 30; usRangeStyle(); loadUsageStats(); });
+    bAll.addEventListener('click', () => { usageStatsDays = -1; usRangeStyle(); loadUsageStats(); });
   }
   usRangeStyle();
 }

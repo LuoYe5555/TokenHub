@@ -59,19 +59,30 @@ type Config struct {
 
 	// ZCode 请求形状注入：overwrite=整体替换 system（最稳，移植自实测流量）；prepend=前置；off=不注入
 	ZCodeInjectShape string `json:"zcodeInjectShape"`
+	ZCodeToolHint    bool   `json:"zcodeToolHint,omitempty"` // 实验性：注入本地工具引导（可能触发上游 3007，默认关）
+	ZCodeTSHint      bool   `json:"zcodeTsHint,omitempty"`   // 实验性：给 ToolSearch 描述追加"内置工具已加载"说明（是否触发 3007 待验证，默认关）
 
-	QuotaRefreshSec   float64 `json:"quotaRefreshSec"`   // 额度自动刷新周期（秒，支持 0.5 等小数），0=关闭
-	TraeAutoSwitch    bool    `json:"traeAutoSwitch"`    // 定时刷新发现 Trae 积分耗尽时，自动冷却该号切换下一个
-	RefreshSkewMin    int     `json:"refreshSkewMin"`    // token 剩余多少分钟内视为将过期，提前刷新
-	MaxRotate         int     `json:"maxRotate"`         // 单次请求最多尝试的账号数
-	UpstreamTimeoutSec int    `json:"upstreamTimeoutSec"` // 上游墙钟超时（SSE 长连接也用它兜底）
-	ConnectTimeoutSec  int    `json:"connectTimeoutSec"`  // 连接段（首字节前）超时
+	QuotaRefreshSec    float64 `json:"quotaRefreshSec"`    // 额度自动刷新周期（秒，支持 0.5 等小数），0=关闭
+	TraeAutoSwitch     bool    `json:"traeAutoSwitch"`     // 定时刷新发现 Trae 积分耗尽时，自动冷却该号切换下一个
+	RefreshSkewMin     int     `json:"refreshSkewMin"`     // token 剩余多少分钟内视为将过期，提前刷新
+	MaxRotate          int     `json:"maxRotate"`          // 单次请求最多尝试的账号数
+	UpstreamTimeoutSec int     `json:"upstreamTimeoutSec"` // 上游墙钟超时（SSE 长连接也用它兜底）
+	ConnectTimeoutSec  int     `json:"connectTimeoutSec"`  // 连接段（首字节前）超时
 
 	ExposePrefixModels bool `json:"exposePrefixModels"` // /v1/models 同时列出 "provider:model" 变体
 
 	// Token 优化（网关层无损省 token，不改变模型可见信息）
 	OptDedup       *bool `json:"optDedup,omitempty"`       // 折叠会话内重复的大段内容（保留最新一份）；nil=开
 	OptCompactJSON *bool `json:"optCompactJSON,omitempty"` // 紧凑化请求中的 pretty JSON；nil=开
+	OptNearDup     *bool `json:"optNearDup,omitempty"`     // 近重复工具结果折叠（同一工具、内容≥90%相似的旧结果只留最新）；nil=开
+
+	ReqDump bool `json:"reqDump,omitempty"` // 诊断：把客户端原始请求快照落盘 data/reqdump（默认关）
+
+	// 破甲实验（提示词对抗研究）：off=默认关闭；仅对本地 Ollama 提供商生效（写死，不受路由影响）
+	PJMode string `json:"pjMode"`
+
+	// 网络加速：本地加速代理（DNS 优选+连接竞速）+ 系统代理一键接管；true=随程序自启
+	Accel bool `json:"accel"`
 
 	DataDir string `json:"-"`
 }
@@ -103,7 +114,8 @@ func Default() *Config {
 		WBIntlKeepalive:       false,
 		ZCodeAutoClaim:        true,
 		ZCodeClaimIntervalMin: 30,
-		ZCodeInjectShape:      "overwrite",
+		ZCodeInjectShape:      "prepend",
+		PJMode:                "off",
 
 		QuotaRefreshSec:    300,
 		TraeAutoSwitch:     true,
@@ -177,6 +189,11 @@ func (c *Config) Normalize() {
 	default:
 		c.ZCodeInjectShape = "overwrite"
 	}
+	switch c.PJMode {
+	case "off", "auto", "3_liner", "antigpt", "betterdan", "aim":
+	default:
+		c.PJMode = "off"
+	}
 	if c.RefreshSkewMin <= 0 {
 		c.RefreshSkewMin = 1440
 	}
@@ -215,6 +232,9 @@ func (c *Config) OptDedupOn() bool { return c.OptDedup == nil || *c.OptDedup }
 
 // OptCompactJSONOn JSON 紧凑化开关（缺省开）。
 func (c *Config) OptCompactJSONOn() bool { return c.OptCompactJSON == nil || *c.OptCompactJSON }
+
+// OptNearDupOn 近重复工具结果折叠开关（缺省开）。
+func (c *Config) OptNearDupOn() bool { return c.OptNearDup == nil || *c.OptNearDup }
 
 // PC 返回指定提供商配置（保证非 nil）。
 func (c *Config) PC(name string) *ProviderConfig {

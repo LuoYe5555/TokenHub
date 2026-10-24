@@ -291,22 +291,28 @@ func (p *Pool) Chat(ctx context.Context, model string, openaiReq []byte, sink pr
 			_ = p.store.Save()
 			return pe
 		}
-		// 凭据失效且未刷新过 → 刷新一次再试同号（refreshToken 优先，回退本机同步）
-		if pe.Kind == provider.KindAuth && !refreshed[acct.ID] {
+		// 凭据失效或撞验证码且未刷新过 → 刷新一次再试同号
+		// （refreshToken 优先，回退本机同步；zcode 的 3007 常见原因是用户在
+		// ZCode 客户端重新登录导致旧 JWT 被吊销，此时同步能拿到新凭据自愈。
+		// 风控型验证码 token 不会变化，重试无意义，故 captcha 仅在凭据变化时重试）
+		if (pe.Kind == provider.KindAuth || pe.Kind == provider.KindCaptcha) && !refreshed[acct.ID] {
 			refreshed[acct.ID] = true
+			before := acct.AccessToken
 			if rerr := p.RefreshAccount(ctx, acct); rerr == nil {
 				_ = p.store.Upsert(acct)
-				err2 := prov.Chat(ctx, acct, openaiReq, ts)
-				if err2 == nil {
-					p.clearCooldown(acct)
-					return nil
-				}
-				pe = asPerr(err2)
-				lastErr = pe
-				if ts.written {
-					p.applyPolicy(ctx, acct, prov, pe, streak)
-					_ = p.store.Save()
-					return pe
+				if pe.Kind == provider.KindAuth || acct.AccessToken != before {
+					err2 := prov.Chat(ctx, acct, openaiReq, ts)
+					if err2 == nil {
+						p.clearCooldown(acct)
+						return nil
+					}
+					pe = asPerr(err2)
+					lastErr = pe
+					if ts.written {
+						p.applyPolicy(ctx, acct, prov, pe, streak)
+						_ = p.store.Save()
+						return pe
+					}
 				}
 			}
 		}
@@ -328,7 +334,7 @@ var cooldownFor = map[provider.Kind]time.Duration{
 	provider.KindRate:    5 * time.Minute,
 	provider.KindServer:  30 * time.Second,
 	provider.KindNetwork: 15 * time.Second,
-	provider.KindCaptcha: 10 * time.Minute,
+	provider.KindCaptcha: 3 * time.Minute, // 缩短：配合"凭据变化才重试"，用户在客户端重登后快速自愈
 	provider.KindAuth:    time.Hour,
 	provider.KindStream:  0,
 	provider.KindModel:   0,

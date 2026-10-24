@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,9 +14,11 @@ import (
 
 	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
+	"tokenhub/internal/pj"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/shares"
+	"tokenhub/internal/store"
 	"tokenhub/internal/tokensaver"
 	"tokenhub/internal/usagelog"
 )
@@ -26,6 +29,12 @@ type Gateway struct {
 	pool   *pool.Pool
 	shares *shares.Manager // 可为 nil（不启用分享钥匙）
 	ulog   *usagelog.Log   // 可为 nil（不记录用量日志）
+
+	// 破甲 auto 模式的按模型模板记忆（惰性加载 data/pj_auto.json）
+	pjAuto struct {
+		once  sync.Once
+		picks *pjAutoMem
+	}
 
 	// AfterCall 每次 API 调用完成后异步回调（参数：提供商名、成功与否），
 	// 用于触发额度快照自动刷新（可为 nil）。
@@ -252,20 +261,38 @@ func mapClientStatus(pe *provider.Error) int {
 // optimizeReq 网关层 token 优化（确定性、无损语义）：JSON 紧凑化 +
 // 会话内重复内容折叠。返回优化后的请求体；解析失败时原样返回。
 func (g *Gateway) optimizeReq(model string, body []byte, rec *usageRecorder) []byte {
+	g.dumpReq(model, body)
 	if !g.cfg.OptDedupOn() && !g.cfg.OptCompactJSONOn() {
 		return body
 	}
 	out, res := tokensaver.Optimize(body, tokensaver.Options{
 		Dedup:       g.cfg.OptDedupOn(),
 		CompactJSON: g.cfg.OptCompactJSONOn(),
+		NearDup:     g.cfg.OptNearDupOn(),
 		MinChars:    500,
 	})
 	if rec != nil {
 		rec.saved = res.SavedTokens
 	}
 	if res.SavedTokens > 0 {
-		logx.Infof("gateway", "token 优化(%s): 紧凑 JSON %d 处 / 折叠重复 %d 处，省约 %d tokens",
-			model, res.Compacted, res.Deduped, res.SavedTokens)
+		logx.Infof("gateway", "token 优化(%s): 紧凑 JSON %d / 重复折叠 %d / 过期结果 %d / 近重复 %d，省约 %d tokens",
+			model, res.Compacted, res.Deduped, res.Staled+res.ImagesDedup, res.NearDuped, res.SavedTokens)
+	}
+	return out
+}
+
+// applyPJ 破甲实验（提示词对抗研究）：仅当显式开启且目标提供商是本机 Ollama 时，
+// 把选中模板套在最后一条 user 消息上。网络提供商一律不经过此逻辑（边界写死）。
+func (g *Gateway) applyPJ(provName string, body []byte) []byte {
+	if g.cfg == nil || g.cfg.PJMode == "" || g.cfg.PJMode == "off" || pj.Get(g.cfg.PJMode) == nil {
+		return body
+	}
+	if provName != store.POllama {
+		return body
+	}
+	out := pj.Apply(g.cfg.PJMode, body)
+	if !bytes.Equal(out, body) {
+		logx.Infof("gateway", "破甲实验已注入（本地 Ollama，模板 %s）", g.cfg.PJMode)
 	}
 	return out
 }
@@ -315,6 +342,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		sink := NewOpenAIStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		body = g.optimizeReq(model, body, rec)
+		body = g.applyPJ(prov.Name(), body)
 		err := g.pool.Chat(ctx, model, body, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -336,6 +364,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	sink := NewAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	body = g.optimizeReq(model, body, rec)
+	body = g.applyPJ(prov.Name(), body)
 	err = g.pool.Chat(ctx, model, body, rec)
 	if shareID != "" {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -665,6 +694,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		sink := NewAnthropicStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		openaiReq = g.optimizeReq(model, openaiReq, rec)
+		openaiReq = g.applyPJ(prov.Name(), openaiReq)
 		err := g.pool.Chat(ctx, model, openaiReq, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -686,6 +716,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	sink := NewAnthropicAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	openaiReq = g.optimizeReq(model, openaiReq, rec)
+	openaiReq = g.applyPJ(prov.Name(), openaiReq)
 	if err := g.pool.Chat(ctx, model, openaiReq, rec); err != nil {
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())

@@ -124,19 +124,19 @@ func planMessagesHeaders(token string) map[string]string {
 func billingHeaders(token, deviceMid string) map[string]string {
 	ver := appVersion()
 	h := map[string]string{
-		"User-Agent":           fmt.Sprintf("ZCode/%s", ver),
-		"HTTP-Referer":         "https://zcode.z.ai",
-		"X-Title":              "Z Code@electron",
-		"X-ZCode-App-Version":  ver,
-		"X-Platform":           platform(),
-		"X-Release-Channel":    "stable",
-		"X-Client-Language":    "zh-CN",
-		"X-Client-Timezone":    clientTimezone(),
-		"X-Os-Category":        runtime.GOOS,
-		"Authorization":        "Bearer " + token,
-		"x-request-id":         provider.NewUUID(),
-		"Content-Type":         "application/json",
-		"Accept":               "application/json",
+		"User-Agent":          fmt.Sprintf("ZCode/%s", ver),
+		"HTTP-Referer":        "https://zcode.z.ai",
+		"X-Title":             "Z Code@electron",
+		"X-ZCode-App-Version": ver,
+		"X-Platform":          platform(),
+		"X-Release-Channel":   "stable",
+		"X-Client-Language":   "zh-CN",
+		"X-Client-Timezone":   clientTimezone(),
+		"X-Os-Category":       runtime.GOOS,
+		"Authorization":       "Bearer " + token,
+		"x-request-id":        provider.NewUUID(),
+		"Content-Type":        "application/json",
+		"Accept":              "application/json",
 	}
 	if deviceMid != "" {
 		h["X-Device-Mid"] = deviceMid
@@ -307,6 +307,10 @@ func (p *Provider) SyncFromLocal(acct *store.Account) error {
 		return provider.Err(provider.KindAuth, 0,
 			"本机 ZCode 当前登录的是另一个账号（%s），请在 ZCode 里切换回该账号后重试", l.DisplayedName())
 	}
+	// 覆盖前把旧 token 备份到 Extra（sync 来的短 token 若上游不认，可手动回滚）
+	if old := strings.TrimSpace(acct.AccessToken); old != "" && old != l.AccessToken {
+		acct.ExtraSet("prevAccessToken", old)
+	}
 	acct.AccessToken = l.AccessToken
 	for k, v := range l.Extra {
 		acct.ExtraSet(k, v)
@@ -337,7 +341,7 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		sink.Close()
 		return err
 	}
-	applyShape(body, p.cfg.ZCodeInjectShape, stableSessionHex(acct.ID))
+	applyShape(body, p.cfg.ZCodeInjectShape, stableSessionHex(acct.ID), p.cfg.ZCodeToolHint, p.cfg.ZCodeTSHint)
 	raw, err := json.Marshal(body)
 	if err != nil {
 		sink.Close()
@@ -377,7 +381,8 @@ func classifyZcode(status int, body []byte) *provider.Error {
 	text := string(body)
 	switch {
 	case status == 405 || captchaRe.MatchString(text):
-		return provider.Err(provider.KindCaptcha, status, "需要验证码（3007）")
+		return provider.Err(provider.KindCaptcha, status,
+			"ZCode 上游要求验证（3007）：通常是会话已失效——请在 ZCode 客户端重新登录，TokenHub 会自动同步新凭据并重试；若客户端也正常则是触发风控，稍等几分钟再试")
 	case status == 401 || zcodeAuthRe.MatchString(text):
 		return provider.Err(provider.KindAuth, status, "JWT 已失效，请重新登录导入")
 	case status == 402 || zcodeQuotaRe.MatchString(text) || strings.Contains(text, "余额不足") || strings.Contains(text, "无可用资源包") || strings.Contains(strings.ToLower(text), "insufficient"):

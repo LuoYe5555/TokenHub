@@ -2,6 +2,7 @@ package tokensaver
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -277,4 +278,111 @@ func quoteJSON(s string) string {
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(s)
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+func mkFileBody(lines []string, editLine string) []byte {
+	content := strings.Join(lines, "\n")
+	if editLine != "" {
+		content += "\n" + editLine
+	}
+	body := map[string]any{
+		"model":  "test",
+		"stream": false,
+		"messages": []map[string]any{
+			{"role": "user", "content": "读一下"},
+			{"role": "assistant", "content": "", "tool_calls": []map[string]any{
+				{"id": "c1", "type": "function", "function": map[string]any{"name": "read_file", "arguments": `{"path":"a.txt"}`}},
+			}},
+			{"role": "tool", "tool_call_id": "c1", "content": content},
+			{"role": "assistant", "content": "", "tool_calls": []map[string]any{
+				{"id": "c2", "type": "function", "function": map[string]any{"name": "read_file", "arguments": `{"path":"a.txt","offset":2}`}},
+			}},
+			{"role": "tool", "tool_call_id": "c2", "content": content + "\n" + editLine},
+		},
+	}
+	out, _ := json.Marshal(body)
+	return out
+}
+
+func bigLines(n int) []string {
+	lines := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		lines = append(lines, fmt.Sprintf("line %d: some code that does things here", i))
+	}
+	return lines
+}
+
+func TestNearDupFolded(t *testing.T) {
+	body := mkFileBody(bigLines(120), "the new bugfix line")
+	out, res := Optimize(body, Options{Dedup: true, NearDup: true})
+	if res.NearDuped != 1 {
+		t.Fatalf("应折叠 1 条近重复结果, got %d", res.NearDuped)
+	}
+	var req map[string]any
+	if json.Unmarshal(out, &req) != nil {
+		t.Fatal("输出不是合法 JSON")
+	}
+	msgs := req["messages"].([]any)
+	first := msgs[2].(map[string]any)
+	if c, _ := first["content"].(string); !strings.Contains(c, "已省略近似重复") {
+		t.Fatalf("旧结果应被替换为标记: %q", c)
+	}
+	last := msgs[4].(map[string]any)
+	if c, _ := last["content"].(string); strings.Contains(c, "已省略") {
+		t.Fatal("最新结果必须原样保留")
+	}
+}
+
+func TestNearDupDisabled(t *testing.T) {
+	body := mkFileBody(bigLines(120), "the new bugfix line")
+	_, res := Optimize(body, Options{Dedup: true, NearDup: false})
+	if res.NearDuped != 0 {
+		t.Fatalf("NearDup=false 不应折叠, got %d", res.NearDuped)
+	}
+}
+
+func TestNearDupKeepsDifferentContent(t *testing.T) {
+	// 内容完全不同（<90% 相似）不应折叠
+	a := bigLines(120)
+	b := make([]string, 0, 120)
+	for i := 0; i < 120; i++ {
+		b = append(b, fmt.Sprintf("totally different content number %d with other words", i*7))
+	}
+	body := mkFileBody(a, strings.Join(b, "\n"))
+	_, res := Optimize(body, Options{Dedup: true, NearDup: true})
+	if res.NearDuped != 0 {
+		t.Fatalf("不相似内容不应折叠, got %d", res.NearDuped)
+	}
+}
+
+func TestNearDupChainEvolution(t *testing.T) {
+	// 文件连续演变 A→B→C：A 与 C 相似度可能不足，但 A≈B、B≈C，链式折叠应处理 A 和 B
+	lines := bigLines(120)
+	verB := strings.Join(append(append([]string{}, lines[:118]...), "change one", "change two"), "\n")
+	verC := strings.Join(append(append([]string{}, lines[:115]...), "final one", "final two", "final three", "final four", "final five"), "\n")
+	ac := func(id string) map[string]any {
+		return map[string]any{
+			"role": "assistant", "content": "",
+			"tool_calls": []map[string]any{{
+				"id": id, "type": "function",
+				"function": map[string]any{"name": "read_file", "arguments": `{"path":"a.txt","offset":` + id[1:] + `}`},
+			}},
+		}
+	}
+	tc := func(id, content string) map[string]any {
+		return map[string]any{"role": "tool", "tool_call_id": id, "content": content}
+	}
+	body := map[string]any{
+		"model": "test", "stream": false,
+		"messages": []map[string]any{
+			ac("c1"), tc("c1", strings.Join(lines, "\n")),
+			ac("c2"), tc("c2", verB),
+			ac("c3"), tc("c3", verC),
+		},
+	}
+	out, _ := json.Marshal(body)
+	_, res := Optimize(out, Options{Dedup: true, NearDup: true})
+	if res.NearDuped != 2 {
+		t.Fatalf("链式演变应折叠 2 条旧版本, got %d", res.NearDuped)
+	}
 }

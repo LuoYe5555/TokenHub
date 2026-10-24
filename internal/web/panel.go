@@ -15,20 +15,21 @@ import (
 	"sync"
 	"time"
 
-	"tokenhub/internal/config"
+	"tokenhub/internal/accel"
 	"tokenhub/internal/autoslide"
+	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/zcode"
 	"tokenhub/internal/scheduler"
-	"tokenhub/internal/traemigrate"
-	"tokenhub/internal/traeswitch"
-	"tokenhub/internal/usagelog"
 	"tokenhub/internal/shares"
 	"tokenhub/internal/store"
+	"tokenhub/internal/traemigrate"
+	"tokenhub/internal/traeswitch"
 	"tokenhub/internal/tunnel"
+	"tokenhub/internal/usagelog"
 )
 
 // Panel 管理面板。
@@ -39,12 +40,13 @@ type Panel struct {
 	sched  *scheduler.Scheduler
 	shares *shares.Manager
 	tunnel *tunnel.Manager
+	accel  *accel.Manager
 	ulog   *usagelog.Log
 
-	mu          sync.Mutex
-	wbStates    map[string]string            // state → realm
-	zcodeSess   map[string]*zcode.LoginSession // flowID → session
-	trae        map[string]*traePending        // pendingID → pending
+	mu            sync.Mutex
+	wbStates      map[string]string              // state → realm
+	zcodeSess     map[string]*zcode.LoginSession // flowID → session
+	trae          map[string]*traePending        // pendingID → pending
 	traeCBStarted bool
 
 	wvDispatch func(func()) // webview UI 线程派发器（窗口模式才非空）
@@ -102,9 +104,9 @@ type traePending struct {
 	createdAt time.Time
 }
 
-func NewPanel(cfg *config.Config, st *store.Store, pl *pool.Pool, sched *scheduler.Scheduler, sh *shares.Manager, tn *tunnel.Manager, ul *usagelog.Log) *Panel {
+func NewPanel(cfg *config.Config, st *store.Store, pl *pool.Pool, sched *scheduler.Scheduler, sh *shares.Manager, tn *tunnel.Manager, ac *accel.Manager, ul *usagelog.Log) *Panel {
 	return &Panel{
-		cfg: cfg, store: st, pl: pl, sched: sched, shares: sh, tunnel: tn, ulog: ul,
+		cfg: cfg, store: st, pl: pl, sched: sched, shares: sh, tunnel: tn, accel: ac, ulog: ul,
 		wbStates:  map[string]string{},
 		zcodeSess: map[string]*zcode.LoginSession{},
 		trae:      map[string]*traePending{},
@@ -146,6 +148,8 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("POST /api/panel/refresh-tokens", p.handleRefreshTokens)
 	api("GET /api/panel/config", p.handleGetConfig)
 	api("POST /api/panel/config", p.handleSaveConfig)
+	api("GET /api/panel/accel", p.handleAccelStatus)
+	api("POST /api/panel/accel", p.handleAccelToggle)
 
 	api("POST /api/panel/account", p.handleAccountAdd)
 	api("PATCH /api/panel/account/{id}", p.handleAccountPatch)
@@ -607,6 +611,56 @@ func (p *Panel) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
+// handleAccelStatus 网络加速状态。
+func (p *Panel) handleAccelStatus(w http.ResponseWriter, r *http.Request) {
+	st := map[string]any{"enabled": p.cfg.Accel}
+	if p.accel != nil {
+		for k, v := range p.accel.Status() {
+			st[k] = v
+		}
+	}
+	writeJSON(w, st)
+}
+
+// handleAccelToggle 网络加速开关：启停本地代理 + 接管/还原系统代理，
+// 并把开关持久化（下次启动按此状态自启）。
+func (p *Panel) handleAccelToggle(w http.ResponseWriter, r *http.Request) {
+	if p.accel == nil {
+		writeErr(w, 503, "加速模块不可用")
+		return
+	}
+	var in struct {
+		On bool `json:"on"`
+	}
+	if err := readBody(r, &in); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if in.On {
+		if err := p.accel.Start(); err != nil {
+			writeErr(w, 500, "加速代理启动失败: "+err.Error())
+			return
+		}
+		if err := p.accel.EnableSystemProxy(true); err != nil {
+			writeErr(w, 500, "系统代理设置失败: "+err.Error())
+			return
+		}
+		logx.Infof("panel", "网络加速已开启（系统代理接管中）")
+	} else {
+		if err := p.accel.EnableSystemProxy(false); err != nil {
+			logx.Warnf("panel", "系统代理还原失败: %v", err)
+		}
+		p.accel.Stop()
+		logx.Infof("panel", "网络加速已关闭")
+	}
+	p.cfg.Accel = in.On
+	if err := p.cfg.Save(); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "status": p.accel.Status()})
+}
+
 // ── 账号 CRUD ──
 
 func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
@@ -1013,9 +1067,9 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 		cacheHit = cacheRead / cacheIn
 	}
 	type agg struct {
-		Tokens   int64   `json:"tokens"`
-		Requests int64   `json:"requests"`
-		Ok       int64   `json:"ok"`
+		Tokens   int64 `json:"tokens"`
+		Requests int64 `json:"requests"`
+		Ok       int64 `json:"ok"`
 	}
 	var week agg
 	byCaller := map[string]*agg{}
@@ -1075,12 +1129,16 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 		}
 		return out
 	}
+	// 总请求数来自持久台账（按天×模型累计，跨重启保留、无 500 条上限）；
+	// 环形缓冲里的 totalReqs/tracked 仅作最近明细参考。
+	allTokens, allReqs := p.ulog.AllTime()
 	writeJSON(w, map[string]any{
 		"accounts": accounts,
 		"tokens": map[string]any{
 			"today": todayTokens, "todayReqs": todayReqs, "week": week.Tokens,
 			"cacheHit": cacheHit, "cacheRead": int64(cacheRead), "cacheWrite": int64(cacheWrite),
 			"requests": totalReqs, "ok": totalOk, "tracked": len(entries),
+			"allTokens": allTokens, "allReqs": allReqs,
 		},
 		"byCaller":   toRows(byCaller),
 		"byProvider": toRows(byProvider),

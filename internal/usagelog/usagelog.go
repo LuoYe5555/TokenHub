@@ -123,18 +123,9 @@ func (l *Log) addHistory(e Entry) {
 	d.Saved += e.SavedTokens
 }
 
-// pruneHistory 台账只保留约 60 天（调用方须持锁）。
-func (l *Log) pruneHistory() {
-	if len(l.history) <= 62 {
-		return
-	}
-	cutoff := time.Now().AddDate(0, 0, -60).Format("2006-01-02")
-	for k := range l.history {
-		if k < cutoff {
-			delete(l.history, k)
-		}
-	}
-}
+// pruneHistory 台账保留策略：数据量很小（天×模型聚合行），不再裁剪，
+// 以支持「全部」时间范围的统计。（调用方无须持锁，保留空实现仅为兼容。）
+func (l *Log) pruneHistory() {}
 
 // Add 追加一条记录（新条目插到最前），超出上限裁剪并落盘。
 func (l *Log) Add(e Entry) {
@@ -191,6 +182,19 @@ func (l *Log) Today() Daily {
 	return l.daily
 }
 
+// AllTime 全历史累计（tokens / 请求数，来自持久台账，不受环形缓冲 500 条影响）。
+func (l *Log) AllTime() (tokens, reqs int64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, models := range l.history {
+		for _, d := range models {
+			tokens += d.Tokens
+			reqs += d.Reqs
+		}
+	}
+	return tokens, reqs
+}
+
 // List 返回最近 limit 条（新在前）。
 func (l *Log) List(limit int) []Entry {
 	if limit <= 0 || limit > maxEntries {
@@ -230,23 +234,42 @@ type Stats struct {
 	Days       []DayStat   `json:"days"`
 	Models     []ModelStat `json:"models"`
 	Total      int64       `json:"total"`
+	Reqs       int64       `json:"reqs"`      // 范围内成功请求数
 	SavedTotal int64       `json:"savedTotal"` // 近 N 天累计节省
 }
 
 // Stats 汇总近 days 天（含今天；无数据的日子也占位，保证 x 轴连续）。
+// days<0 表示全部历史：只列有数据的日期（升序），不占位。
 func (l *Log) Stats(days int) *Stats {
-	if days <= 0 || days > 60 {
-		days = 7
+	all := days < 0
+	if !all {
+		if days <= 0 || days > 60 {
+			days = 7
+		}
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
 	idx := map[string]int{}
-	st := &Stats{Days: make([]DayStat, 0, days)}
-	for i := days - 1; i >= 0; i-- {
-		k := now.AddDate(0, 0, -i).Format("2006-01-02")
-		idx[k] = len(st.Days)
-		st.Days = append(st.Days, DayStat{Day: k, Models: map[string]int64{}})
+	st := &Stats{}
+	if all {
+		ds := make([]string, 0, len(l.history))
+		for day := range l.history {
+			ds = append(ds, day)
+		}
+		sort.Strings(ds)
+		st.Days = make([]DayStat, 0, len(ds))
+		for _, k := range ds {
+			idx[k] = len(st.Days)
+			st.Days = append(st.Days, DayStat{Day: k, Models: map[string]int64{}})
+		}
+	} else {
+		st.Days = make([]DayStat, 0, days)
+		for i := days - 1; i >= 0; i-- {
+			k := now.AddDate(0, 0, -i).Format("2006-01-02")
+			idx[k] = len(st.Days)
+			st.Days = append(st.Days, DayStat{Day: k, Models: map[string]int64{}})
+		}
 	}
 	for day, models := range l.history {
 		di, ok := idx[day]
@@ -258,6 +281,7 @@ func (l *Log) Stats(days int) *Stats {
 			st.Days[di].Saved += d.Saved
 			st.Days[di].Models[m] += d.Tokens
 			st.Total += d.Tokens
+			st.Reqs += d.Reqs
 			st.SavedTotal += d.Saved
 		}
 	}

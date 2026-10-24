@@ -11,19 +11,19 @@ import (
 )
 
 const (
-	APIBase   = "https://zcode.z.ai"
-	BigmodelBase = "https://open.bigmodel.cn"
+	APIBase             = "https://zcode.z.ai"
+	BigmodelBase        = "https://open.bigmodel.cn"
 	zaiBusinessLoginURL = "https://api.z.ai/api/auth/z/login"
 )
 
 // LoginSession 一次 CLI 轮询登录会话。
 type LoginSession struct {
-	Provider   string `json:"provider"` // bigmodel | zai
-	FlowID     string `json:"flowId"`
-	PollToken  string `json:"-"`
+	Provider     string `json:"provider"` // bigmodel | zai
+	FlowID       string `json:"flowId"`
+	PollToken    string `json:"-"`
 	AuthorizeURL string `json:"authorizeUrl"`
-	IntervalMS int    `json:"intervalMs"`
-	ExpiresAt  int64  `json:"expiresAt"`
+	IntervalMS   int    `json:"intervalMs"`
+	ExpiresAt    int64  `json:"expiresAt"`
 }
 
 // LoginStart 与 ZCode 客户端「CLI 轮询登录」同一协议。
@@ -38,10 +38,10 @@ func LoginStart(providerKind string) (*LoginSession, error) {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			FlowID      string `json:"flow_id"`
-			AuthorizeURL string `json:"authorize_url"`
-			ExpiresAt   float64 `json:"expires_at"`
-			PollIntervalSec int64 `json:"poll_interval_sec"`
+			FlowID          string  `json:"flow_id"`
+			AuthorizeURL    string  `json:"authorize_url"`
+			ExpiresAt       float64 `json:"expires_at"`
+			PollIntervalSec int64   `json:"poll_interval_sec"`
 		} `json:"data"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -76,19 +76,19 @@ func LoginStart(providerKind string) (*LoginSession, error) {
 		interval = 2
 	}
 	return &LoginSession{
-		Provider:    p,
-		FlowID:      out.Data.FlowID,
-		PollToken:   pollToken,
+		Provider:     p,
+		FlowID:       out.Data.FlowID,
+		PollToken:    pollToken,
 		AuthorizeURL: out.Data.AuthorizeURL,
-		IntervalMS:  int(interval) * 1000,
-		ExpiresAt:   time.Now().Unix() + expiresIn,
+		IntervalMS:   int(interval) * 1000,
+		ExpiresAt:    time.Now().Unix() + expiresIn,
 	}, nil
 }
 
 // LoginPollResult 轮询结果。
 type LoginPollResult struct {
-	Status string          `json:"status"` // pending | ok | failed
-	Error  string          `json:"error,omitempty"`
+	Status  string         `json:"status"` // pending | ok | failed
+	Error   string         `json:"error,omitempty"`
 	Account *store.Account `json:"-"`
 }
 
@@ -102,11 +102,11 @@ func LoginPoll(ctx context.Context, sess *LoginSession) (*LoginPollResult, error
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			Status string `json:"status"`
-			Token  string `json:"token"`
-			User   map[string]any `json:"user"`
+			Status   string         `json:"status"`
+			Token    string         `json:"token"`
+			User     map[string]any `json:"user"`
 			Bigmodel map[string]any `json:"bigmodel"`
-			Zai    map[string]any `json:"zai"`
+			Zai      map[string]any `json:"zai"`
 		} `json:"data"`
 	}
 	_, err := httpx.DoJSON(ctx, "GET", APIBase+"/api/v1/oauth/cli/poll/"+sess.FlowID, hdr, nil, &out, 30*time.Second)
@@ -182,8 +182,8 @@ func LoginPoll(ctx context.Context, sess *LoginSession) (*LoginPollResult, error
 // resolveZaiBusinessToken Z.ai OAuth token → 业务 token。
 func resolveZaiBusinessToken(ctx context.Context, oauthToken string) (string, error) {
 	var out struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
+		Code int            `json:"code"`
+		Msg  string         `json:"msg"`
 		Data map[string]any `json:"data"`
 	}
 	hdr := map[string]string{"Content-Type": "application/json", "Accept": "application/json"}

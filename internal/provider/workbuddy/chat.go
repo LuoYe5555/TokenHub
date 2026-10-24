@@ -14,17 +14,24 @@ import (
 	"tokenhub/internal/store"
 )
 
-// seedModels 上游目录不可用时的兜底模型表（移植自 workbuddy-openai-proxy 配置）。
+// seedModels 上游目录不可用时的兜底模型表。
+// 以 2026-10-24 实测的国服 personal/models 目录为准——国服已下线 claude/gpt/gemini，
+// 兜底表若再列这些会诱导选用并报 11102「当前模型不可用」（易被误判为认证被拦）。
+// 国际版目录仍含 claude/gpt/gemini，但其动态目录一直可用，兜底场景极少。
 var seedModels = []provider.ModelInfo{
 	{ID: "auto", Name: "Auto"},
-	{ID: "deepseek-v4-pro"}, {ID: "deepseek-v4.1-flash"},
-	{ID: "claude-sonnet-4.6"}, {ID: "claude-opus-4.6"},
-	{ID: "gpt-5.6-luna"}, {ID: "gpt-5.6-terra"}, {ID: "gpt-5.6-sol"}, {ID: "gpt-6-astra"},
-	{ID: "gpt-5.5"}, {ID: "gpt-5.4"}, {ID: "gpt-5.3-codex"},
-	{ID: "gemini-3.1-pro"}, {ID: "gemini-3.5-flash"}, {ID: "gemini-3.1-flash-image"},
-	{ID: "glm-5.3"}, {ID: "glm-5.2"}, {ID: "glm-5.3-flash"},
-	{ID: "kimi-k3"}, {ID: "kimi-k2.7"}, {ID: "kimi-k2.6"}, {ID: "kimi-k2.5"},
-	{ID: "minimax-m3"}, {ID: "hy3"},
+	{ID: "hy3", Name: "Hy3"}, {ID: "hy3-x", Name: "Hy3"},
+	{ID: "hy4-preview", Name: "Hy4 Preview"}, {ID: "hy4-preview-x", Name: "Hy4 Preview"},
+	{ID: "glm-5.3", Name: "GLM-5.3"}, {ID: "glm-5.2", Name: "GLM-5.2"}, {ID: "glm-5.3-flash", Name: "GLM-5.3-Flash"},
+	{ID: "glm-5.1"}, {ID: "glm-5.0"}, {ID: "glm-4.7"}, {ID: "glm-4.6"}, {ID: "glm-4.6v", Name: "GLM-4.6V"},
+	{ID: "glm-5v-turbo", Name: "GLM-5v-Turbo"},
+	{ID: "kimi-k3-1", Name: "Kimi-K3"}, {ID: "kimi-k3.1-pro", Name: "Kimi-K3.1-Pro"},
+	{ID: "kimi-k2.8-preview", Name: "Kimi-K2.8-Preview"}, {ID: "kimi-k2.5"}, {ID: "kimi-k2-thinking", Name: "Kimi-K2-Thinking"},
+	{ID: "deepseek-v4-pro", Name: "DeepSeek-V4-Pro"}, {ID: "deepseek-v4.1-flash", Name: "DeepSeek-V4.1-Flash"},
+	{ID: "deepseek-v4-flash", Name: "DeepSeek-V4-Flash"}, {ID: "deepseek-v3-2-volc", Name: "DeepSeek-V3.2"},
+	{ID: "minimax-m3", Name: "MiniMax-M3"}, {ID: "minimax-m2.5", Name: "MiniMax-M2.5"}, {ID: "minimax-m3.1-flash", Name: "MiniMax-M3.1-Flash"},
+	{ID: "hunyuan-2.0-thinking", Name: "Hunyuan-2.0-Thinking"}, {ID: "hunyuan-chat", Name: "Hunyuan-Turbos"},
+	{ID: "step-5-preview", Name: "Step-5-Preview"}, {ID: "mimo-v2.6-pro", Name: "MiMo-V2.6-Pro"},
 }
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }
@@ -216,14 +223,40 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 	}()
 	if resp.Status >= 400 {
 		sink.Close()
-		return provider.ClassifyBody(resp.Status, resp.Body)
+		return wbFriendlyError(resp.Status, resp.Body)
 	}
 	// 200 + JSON = 业务错误信封
 	if resp.ContentType != "" && strings.Contains(resp.ContentType, "application/json") {
 		sink.Close()
-		return provider.ClassifyBody(resp.Status, resp.Body)
+		return wbFriendlyError(resp.Status, resp.Body)
 	}
 	return parseChatSSE(resp.Stream, body, sink)
+}
+
+// wbFriendlyError 解析国服错误信封，把易误判的业务码翻译成明确指引。
+func wbFriendlyError(status int, body []byte) error {
+	err := provider.ClassifyBody(status, body)
+	if len(body) == 0 {
+		return err
+	}
+	var env struct {
+		Code       int    `json:"code"`
+		Msg        string `json:"msg"`
+		DisplayMsg struct {
+			Zh string `json:"zh"`
+		} `json:"displayMsg"`
+	}
+	if json.Unmarshal(body, &env) != nil || env.Code == 0 {
+		return err
+	}
+	switch env.Code {
+	case 11102:
+		return provider.Err(provider.KindModel, status,
+			"模型在上游不存在或未接入（%s）：国服目录已下线 claude/gpt/gemini，请改用 GLM / Kimi / DeepSeek / 混元 等国服在架模型", env.Msg)
+	case 11101:
+		return provider.Err(provider.KindClient, status, "上游要求流式请求（%s）", env.Msg)
+	}
+	return err
 }
 
 // parseChatSSE 解析上游 OpenAI 风格 SSE（含错误信封帧）。

@@ -155,16 +155,16 @@ func ResolveLocalPaths() (*LocalPaths, bool) {
 
 // LocalCreds 本机读取并解密后的凭据。
 type LocalCreds struct {
-	Raw          map[string]string // 全部键值（仍保留原 enc 密文）
-	JWT          string            // zcodejwttoken
-	Active       string            // oauth:active_provider
-	BigmodelAT   string
-	BigmodelRT   string
-	ZaiAT        string
-	UID          string
-	Username     string
-	DisplayName  string
-	Email        string
+	Raw           map[string]string // 全部键值（仍保留原 enc 密文）
+	JWT           string            // zcodejwttoken
+	Active        string            // oauth:active_provider
+	BigmodelAT    string
+	BigmodelRT    string
+	ZaiAT         string
+	UID           string
+	Username      string
+	DisplayName   string
+	Email         string
 	LoginProvider string
 }
 

@@ -17,6 +17,7 @@ import (
 	"time"
 	"unsafe"
 
+	"tokenhub/internal/accel"
 	"tokenhub/internal/appicon"
 	"tokenhub/internal/config"
 	"tokenhub/internal/gateway"
@@ -30,9 +31,9 @@ import (
 	"tokenhub/internal/provider/zcode"
 	"tokenhub/internal/scheduler"
 	"tokenhub/internal/shares"
-	"tokenhub/internal/usagelog"
 	"tokenhub/internal/store"
 	"tokenhub/internal/tunnel"
+	"tokenhub/internal/usagelog"
 	"tokenhub/internal/web"
 	"tokenhub/internal/winicon"
 
@@ -154,7 +155,17 @@ func main() {
 		logx.Warnf("main", "未找到可用的仅 API 监听端口，公网分享不可用")
 	}
 
-	panel := web.NewPanel(cfg, st, pl, sched, sh, tunnelMgr, ulog)
+	// 网络加速：按持久化开关自启（本地代理 + 系统代理接管）
+	acc := accel.New(cfg)
+	if cfg.Accel {
+		if err := acc.Start(); err != nil {
+			logx.Warnf("main", "网络加速自启失败: %v", err)
+		} else if err := acc.EnableSystemProxy(true); err != nil {
+			logx.Warnf("main", "系统代理接管失败: %v", err)
+		}
+	}
+
+	panel := web.NewPanel(cfg, st, pl, sched, sh, tunnelMgr, acc, ulog)
 	mux := http.NewServeMux()
 	gw.Register(mux)
 	panel.Register(mux)
