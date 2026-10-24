@@ -88,10 +88,10 @@ func TestSniffAuthEndpoints(t *testing.T) {
 			Method string `json:"method"`
 			Params struct {
 				Request struct {
-					URL    string            `json:"url"`
-					Method string            `json:"method"`
-					PostData string          `json:"postData"`
-					Headers map[string]string `json:"headers"`
+					URL      string            `json:"url"`
+					Method   string            `json:"method"`
+					PostData string            `json:"postData"`
+					Headers  map[string]string `json:"headers"`
 				} `json:"request"`
 			} `json:"params"`
 		}

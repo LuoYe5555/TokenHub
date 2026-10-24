@@ -181,6 +181,7 @@ func GetCookies(port int) ([]Cookie, error) {
 //   - refresh：名字含 "refresh"（refresh_token）
 //   - token：仅认名字恰为 "token" 的旧式 cookie；auth-session 是 auth.qwen.ai
 //     的 OAuth 会话，不是 API 令牌，绝不能当 token（会污染账号）
+//
 // token 通常为空属正常，调用方应拿 refresh 去换（qwen.ExchangeRefresh）。
 func PickAuth(cookies []Cookie) (token, refresh string) {
 	for _, c := range cookies {

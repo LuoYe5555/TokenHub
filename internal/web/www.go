@@ -27,7 +27,8 @@ func (p *Panel) serveCaptchaJS(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(captchaJS)
 }
 
-func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {	name := r.PathValue("name")
+func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
 	data, err := iconFS.ReadFile("www/icons/" + name)
 	if err != nil {
 		http.NotFound(w, r)

@@ -4,7 +4,18 @@
 /* ───────────────────────── i18n ───────────────────────── */
 const I18N = {
   zh: {
-    nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_logs: '运行日志', nav_settings: '设置',
+    nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_prices: '模型价格', nav_logs: '运行日志', nav_settings: '设置',
+    /* 模型价格页 */
+    price_title: '模型价格', price_sub: '各大模型每百万 tokens 价格（OpenRouter + LLMabacus 双源，每日自动更新；离线用内置国产价兜底）',
+    price_search_ph: '搜索模型名 / 厂商…', price_updated: '更新于', price_refresh: '立即更新', price_refreshing: '正在更新…',
+    price_count: '个模型', price_col_model: '模型', price_col_vendor: '厂商', price_col_input: '输入',
+    price_col_output: '输出', price_col_cache: '缓存读', price_col_cur: '币种', price_col_src: '来源',
+    price_per_m: '/百万 tokens', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: '内置',
+    price_never: '尚未联网更新', price_refresh_ok: '价格表已更新', price_currency_note: '花费统计按记录时价格折算为人民币存储，$ 显示按当时汇率反算',
+    /* 用量花费 */
+    usage_upstream: '上游额度消耗', usage_upstream_tip: '上游额度快照的「已用」合计（按套餐周期累计，含 ZCode/Trae 等客户端直连使用）——与「今日 tokens」（仅网关代理的当日用量）口径不同，两者差异即直连用量+周期累计',
+    usage_cost_title: '花费统计', usage_cost_total: '花费总额', usage_cost_range_tip: '按每笔调用落账时的价格快照折算，不受之后调价影响',
+    usage_cost_legacy: '历史数据没有价格快照（无法按当时价格回溯计费），花费从本次更新后开始累计',
     usage_title: '用量与占比', usage_sub: '账号额度余量与调用分布（总请求数来自持久台账，全量统计；下方明细为最近 500 条）',
     usage_today: '今日 tokens', usage_week: '近 7 天 tokens', usage_requests: '总请求数', usage_tracked: '明细缓冲',
     usage_cache_hit: '缓存命中', usage_cache_read: '缓存读', usage_cache_write: '缓存写', usage_cache_short: '缓存', usage_in: '输入', usage_out: '输出',
@@ -162,7 +173,18 @@ const I18N = {
     logs_empty: '暂无日志',
   },
   en: {
-    nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_logs: 'Logs', nav_settings: 'Settings',
+    nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_prices: 'Prices', nav_logs: 'Logs', nav_settings: 'Settings',
+    /* Prices page */
+    price_title: 'Model Prices', price_sub: 'Per-million-token prices from OpenRouter + LLMabacus (auto-updated daily; builtin CN snapshot as offline fallback)',
+    price_search_ph: 'Search model / vendor…', price_updated: 'Updated', price_refresh: 'Refresh now', price_refreshing: 'Refreshing…',
+    price_count: 'models', price_col_model: 'Model', price_col_vendor: 'Vendor', price_col_input: 'Input',
+    price_col_output: 'Output', price_col_cache: 'Cache read', price_col_cur: 'Currency', price_col_src: 'Source',
+    price_per_m: '/M tokens', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: 'Builtin',
+    price_never: 'Not updated yet', price_refresh_ok: 'Price table updated', price_currency_note: 'Costs are snapshotted at request time in CNY; $ view converts back at the then-current rate',
+    /* Usage cost */
+    usage_upstream: 'Upstream quota used', usage_upstream_tip: 'Sum of upstream quota snapshots "used" (cumulative per plan period, including direct ZCode/Trae client usage) — different scope from "Today tokens" (gateway-proxied usage today only)',
+    usage_cost_title: 'Cost stats', usage_cost_total: 'Total cost', usage_cost_range_tip: 'Priced with the rate snapshot taken when each call was logged; later price changes do not affect it',
+    usage_cost_legacy: 'Legacy data has no price snapshot (cannot be priced retroactively at historical rates); cost tracking starts from this update',
     usage_title: 'Usage & Quotas', usage_sub: 'Account quota remainder and call distribution (total requests from the persistent ledger, all-time; the list below shows the latest 500 entries)',
     usage_today: 'Today tokens', usage_week: '7-day tokens', usage_requests: 'Total requests', usage_tracked: 'detail buffer',
     usage_cache_hit: 'Cache hit', usage_cache_read: 'cache read', usage_cache_write: 'cache write', usage_cache_short: 'cache', usage_in: 'in', usage_out: 'out',
@@ -329,6 +351,7 @@ function t(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.zh[key] || key;
 function applyI18n() {
   document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   document.getElementById('langSel').value = LANG;
   renderProviders();
   renderAccounts();
@@ -339,6 +362,7 @@ function applyI18n() {
   if (sc) sc.dataset.built = '';
   renderShares();
   updatePubUI();
+  renderPricesTable(); // 价格页随语言切换刷新列头
 }
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -667,7 +691,9 @@ $$('.nav-item').forEach(item => {
     $$('.page').forEach(p => p.classList.remove('active'));
     $('#page-' + item.dataset.page).classList.add('active');
     if (item.dataset.page === 'logs') startLogStream();
+    if (item.dataset.page === 'api') renderModels(); // 每次进 API 页都拉最新模型列表
     if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); }
+    if (item.dataset.page === 'prices') loadPrices();
   });
 });
 
@@ -689,10 +715,17 @@ async function loadUsage() {
   let d;
   try { d = await api('/api/panel/usage-summary'); } catch (e) { toast(e.message, true); return; }
   const tks = d.tokens || {};
+  // 上游额度消耗：额度快照「已用」合计（token 单位的账号），口径=套餐周期累计+客户端直连
+  const tokenAccts = (d.accounts || []).filter(x => (x.unit || '').toLowerCase().includes('token'));
+  const upstreamUsed = tokenAccts.reduce((s, x) => s + (x.used || 0), 0);
+  const upDetail = tokenAccts.map(x => `${x.nickname} ${fmtNum(x.used)}${x.unit || ''}`).join('　|　');
   $('#usageCards').innerHTML = `
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_today')}</div>
       <div style="font-size:22px;font-weight:600">${fmtTokens(tks.today)}</div>
       <div style="opacity:.5;font-size:11px">${tks.todayReqs || 0} ${t('usage_req_unit').trim()}${tks.cacheHit ? ' · ' + t('usage_cache_hit') + ' ' + Math.round(tks.cacheHit * 100) + '%' : ''}</div></div>
+    <div class="card" style="flex:1;min-width:150px" title="${esc(t('usage_upstream_tip'))}${upDetail ? '\n' + esc(upDetail) : ''}"><div style="opacity:.6;font-size:12px">${t('usage_upstream')} ⓘ</div>
+      <div style="font-size:22px;font-weight:600">${tokenAccts.length ? fmtNum(upstreamUsed) : '—'}</div>
+      <div style="opacity:.5;font-size:11px">${tokenAccts.length ? fmtTokens(upstreamUsed) + ' tokens · ' + tokenAccts.length + ' ' + t('accounts').toLowerCase() : t('usage_no_quota')}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_week')}</div>
       <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
@@ -1379,6 +1412,11 @@ $$('#exTabs button').forEach(b => {
   });
 });
 
+/* 模型分组折叠状态（localStorage 持久化） */
+let modelGroupOpen = {};
+try { modelGroupOpen = JSON.parse(localStorage.getItem('th_model_groups') || '{}'); } catch {}
+function saveModelGroups() { localStorage.setItem('th_model_groups', JSON.stringify(modelGroupOpen)); }
+
 async function renderModels(cached) {
   if (!cached) {
     try {
@@ -1386,22 +1424,48 @@ async function renderModels(cached) {
       modelCache = r.models;
     } catch { return; }
   }
-  const chips = $('#modelChips');
-  chips.innerHTML = '';
+  const box = $('#modelChips');
+  if (!box) return;
   const all = modelCache || {};
+  let html = '';
+  let any = false;
   for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
+    const list = all[name] || [];
+    if (!list.length) continue;
+    any = true;
     const meta = providerMeta(name);
-    for (const m of (all[name] || [])) {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.innerHTML = `<b>${esc(m.id)}</b>`;
-      chip.title = meta.label + (m.name ? ' · ' + m.name : '');
-      chips.appendChild(chip);
-    }
+    const gid = 'mg-' + name;
+    const open = !!modelGroupOpen[name];
+    const chips = list.map(m =>
+      `<span class="chip" title="${esc(meta.label + (m.name ? ' · ' + m.name : ''))}"><b>${esc(m.id)}</b></span>`
+    ).join('');
+    html += `
+      <div style="margin-bottom:4px">
+        <div data-mtoggle="${name}" style="display:flex;align-items:center;gap:8px;padding:7px 2px;cursor:pointer;user-select:none">
+          <img class="pico" src="${meta.icon}" alt=""> <b style="font-size:13px">${esc(meta.label)}</b>
+          <span class="badge">${list.length}</span>
+          <span style="flex:1"></span>
+          <span class="mtri" style="display:inline-block;font-size:10px;opacity:.55;transition:transform .15s;line-height:1;transform:rotate(${open ? '180deg' : '0deg'})">▼</span>
+        </div>
+        <div id="${gid}" class="chips" style="display:${open ? 'flex' : 'none'};margin-top:2px">${chips}</div>
+      </div>`;
   }
-  if (!chips.children.length) chips.innerHTML = `<span class="empty">${t('no_quota')}</span>`;
+  box.innerHTML = any ? html : `<span class="empty">${t('no_quota')}</span>`;
   renderExamples();
 }
+$('#modelChips').addEventListener('click', e => {
+  const head = e.target.closest('[data-mtoggle]');
+  if (!head) return;
+  const name = head.dataset.mtoggle;
+  const body = document.getElementById('mg-' + name);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'flex';
+  modelGroupOpen[name] = !open;
+  saveModelGroups();
+  const tri = head.querySelector('.mtri');
+  if (tri) tri.style.transform = `rotate(${!open ? '180deg' : '0deg'})`;
+});
 $('#btnReloadModels').addEventListener('click', () => { modelCache = null; renderModels(); });
 
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText($('#' + b.dataset.copy).value)));
@@ -1617,6 +1681,7 @@ function renderUsageLog(list) {
   if (head) head.innerHTML = `<tr>
     <th>${t('usage_time')}</th><th>${t('usage_caller')}</th><th>${t('usage_prov')}</th>
     <th>${t('usage_model')}</th><th style="text-align:right">${t('usage_tokens')}</th>
+    <th style="text-align:right">${t('usage_cost_total')}</th>
     <th style="text-align:right">${t('usage_dur')}</th><th>${t('usage_status')}</th></tr>`;
   tb.innerHTML = list.length ? list.map(u => {
     const time = new Date(u.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
@@ -1630,16 +1695,18 @@ function renderUsageLog(list) {
     const st = u.ok
       ? `<span style="color:var(--ok, #3ad98a)">${t('usage_ok')}</span>`
       : `<span style="color:var(--danger, #ff6b6b)" title="${esc(u.errMsg || '')}">${t('usage_fail')}</span>`;
+    const costTip = u.costSrc ? `title="价格来源: ${esc(u.costSrc)}（落账时快照）" style="cursor:help"` : 'style="opacity:.4"';
     return `<tr>
       <td style="font-family:var(--mono)">${time}</td>
       <td>${caller}</td>
       <td>${esc(u.provider || '')}</td>
       <td style="font-family:var(--mono)">${esc(u.model || '')}</td>
       <td style="text-align:right;font-family:var(--mono)">${tok}</td>
+      <td style="text-align:right;font-family:var(--mono)" ${costTip}>${u.costCny > 0 ? fmtCost(u.costCny) : '—'}</td>
       <td style="text-align:right;font-family:var(--mono)">${u.durationMs != null ? u.durationMs + 'ms' : '-'}</td>
       <td>${st}</td>
     </tr>`;
-  }).join('') : `<tr><td colspan="7" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
+  }).join('') : `<tr><td colspan="8" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
 }
 setInterval(() => { if (usageLogPage === 1) loadUsageLog(); }, 10000);
 
@@ -1659,6 +1726,7 @@ async function loadUsageStats() {
   try { d = await api(`/api/panel/usage/stats?days=${usageStatsDays}`); } catch { return; }
   renderUsageTrend(d || {});
   renderUsageDonut(d || {});
+  renderUsageCost(d || {});
 }
 
 // usSeries 取 top maxN 模型的按日序列，其余并为「其他」
@@ -1755,6 +1823,77 @@ function renderUsageDonut(d) {
     </div>`;
 }
 
+/* ── 花费统计：按落账时价格快照折算的 CNY 存储，¥ 默认 / $ 可切换 ── */
+let costCurrency = localStorage.getItem('th_cost_cur') || 'CNY';
+let lastStatsRate = 7.2;
+
+function fmtCost(cny) {
+  if (!cny || cny <= 0) return '—';
+  if (costCurrency === 'USD') {
+    const usd = cny / (lastStatsRate || 7.2);
+    return '$' + (usd >= 100 ? usd.toFixed(1) : usd >= 1 ? usd.toFixed(2) : usd.toFixed(4));
+  }
+  return '¥' + (cny >= 100 ? cny.toFixed(1) : cny >= 1 ? cny.toFixed(2) : cny.toFixed(4));
+}
+
+function renderUsageCost(d) {
+  const box = $('#usCost');
+  if (!box) return;
+  lastStatsRate = d.rate || lastStatsRate || 7.2;
+  const models = (d.models || []).filter(m => (m.cost || 0) > 0).sort((a, b) => b.cost - a.cost);
+  const total = d.cost || 0;
+  const btn = $('#usCostToggle');
+  if (btn) {
+    btn.textContent = costCurrency === 'CNY' ? '¥ 人民币' : '$ USD';
+    btn.title = t('usage_cost_range_tip');
+  }
+  if (!models.length || total <= 0) {
+    // 有用量但没花费 → 旧数据没有价格快照，说明而不是空白
+    const legacy = (d.total || 0) > 0;
+    box.innerHTML = `<div class="hint">${legacy ? t('usage_cost_legacy') : t('us_no_data')}</div>`;
+    return;
+  }
+  const R = 78, SW = 30, C = 2 * Math.PI * R;
+  let off = 0, segs = '';
+  const shown = models.slice(0, 7);
+  shown.forEach((m, i) => {
+    const frac = m.cost / total;
+    const len = Math.max(frac * C - 2, 0.5);
+    segs += `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${US_COLORS[i % US_COLORS.length]}" stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
+    off += frac * C;
+  });
+  if (models.length > shown.length) {
+    const restC = models.slice(shown.length).reduce((s, m) => s + m.cost, 0);
+    const len = Math.max(restC / total * C - 2, 0.5);
+    segs += `<circle r="${R}" cx="100" cy="100" fill="none" stroke="#8b93a5" stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 100 100)"/>`;
+  }
+  const rows = shown.map((m, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px">
+      <i style="width:9px;height:9px;border-radius:50%;background:${US_COLORS[i % US_COLORS.length]};flex:0 0 auto"></i>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.model)}">${esc(m.model)}</span>
+      <span style="font-family:var(--mono);opacity:.85">${fmtCost(m.cost)}</span>
+      <span style="width:48px;text-align:right;opacity:.6">${(m.cost / total * 100).toFixed(1)}%</span>
+    </div>`).join('');
+  box.innerHTML = `
+    <div style="border:1px solid var(--border,#232833);border-radius:10px;padding:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:rgba(255,255,255,.02)">
+      <svg viewBox="0 0 200 200" style="width:170px;height:170px;flex:0 0 auto">${segs}
+        <text x="100" y="96" text-anchor="middle" fill="#e8eefb" font-size="20" font-weight="600">${fmtCost(total)}</text>
+        <text x="100" y="116" text-anchor="middle" fill="#5b6474" font-size="11">${t('usage_cost_total')}(${costCurrency === 'CNY' ? '¥' : '$'})</text>
+      </svg>
+      <div style="flex:0 1 340px;min-width:230px">
+        ${rows}
+        <div class="hint" style="margin-top:4px" title="${esc(t('usage_cost_range_tip'))}">${esc(t('usage_cost_range_tip'))}</div>
+      </div>
+    </div>`;
+}
+
+$('#usCostToggle')?.addEventListener('click', () => {
+  costCurrency = costCurrency === 'CNY' ? 'USD' : 'CNY';
+  localStorage.setItem('th_cost_cur', costCurrency);
+  loadUsageStats();
+  loadUsageLog();
+});
+
 function usRangeStyle() {
   const b7 = $('#usRange7'), b30 = $('#usRange30'), bAll = $('#usRangeAll');
   if (!b7 || !b30 || !bAll) return;
@@ -1782,6 +1921,71 @@ function initUsageStats() {
   usRangeStyle();
 }
 setInterval(() => { if (usageLogPage === 1) loadUsageStats(); }, 60000);
+
+/* ───────────────────── 模型价格页 ───────────────────── */
+let priceCache = null;      // { models, updatedAt, rate, count }
+let priceMetaLine = '';
+
+async function loadPrices(force) {
+  try {
+    if (force) {
+      await post('/api/panel/prices/refresh'); // 强制联网刷新两个价格源
+      toast(t('price_refresh_ok'));
+    }
+    priceCache = await api('/api/panel/prices');
+  } catch (e) { toast(e.message, true); return; }
+  renderPricesMeta();
+  renderPricesTable();
+}
+
+function renderPricesMeta() {
+  const el = $('#priceMeta');
+  if (!el || !priceCache) return;
+  const up = priceCache.updatedAt
+    ? `${t('price_updated')} ${fmtTime(priceCache.updatedAt)}`
+    : t('price_never');
+  el.textContent = `${up} · ${priceCache.count || 0} ${t('price_count')}`;
+}
+
+function priceSrcLabel(s) {
+  return s === 'openrouter' ? t('price_src_or') : s === 'llmabacus' ? t('price_src_ab') : t('price_src_bi');
+}
+function fmtPrice(n) {
+  if (!n || n <= 0) return '—';
+  return String(parseFloat(n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toFixed(4)));
+}
+
+function renderPricesTable() {
+  const tb = $('#priceList');
+  if (!tb || !priceCache) return;
+  const head = $('#priceHead');
+  if (head) head.innerHTML = `<tr>
+    <th>${t('price_col_model')}</th><th>${t('price_col_vendor')}</th>
+    <th style="text-align:right">${t('price_col_input')}<span style="opacity:.6">${t('price_per_m')}</span></th>
+    <th style="text-align:right">${t('price_col_output')}</th>
+    <th style="text-align:right">${t('price_col_cache')}</th>
+    <th>${t('price_col_cur')}</th><th>${t('price_col_src')}</th></tr>`;
+  const q = ($('#priceSearch')?.value || '').trim().toLowerCase();
+  const all = priceCache.models || [];
+  const list = q ? all.filter(m =>
+    (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q) || (m.vendor || '').toLowerCase().includes(q)
+  ) : all;
+  tb.innerHTML = list.length ? list.map(m => `<tr>
+      <td style="font-family:var(--mono)">${esc(m.id)}${m.name && m.name !== m.id ? `<span style="opacity:.55"> · ${esc(m.name)}</span>` : ''}</td>
+      <td>${esc(m.vendor || '—')}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.input)}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.output)}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.cacheRead)}</td>
+      <td>${esc(m.currency || '')}</td>
+      <td><span class="badge">${esc(priceSrcLabel(m.source))}</span></td>
+    </tr>`).join('') : `<tr><td colspan="7" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
+}
+
+$('#priceSearch')?.addEventListener('input', (() => {
+  let tm;
+  return () => { clearTimeout(tm); tm = setTimeout(renderPricesTable, 150); };
+})());
+$('#btnPriceRefresh')?.addEventListener('click', e => withBusy(e.currentTarget, () => loadPrices(true), t('price_refreshing')));
 
 const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama'];
 function shareLimitLabel(pv) {
@@ -1915,6 +2119,7 @@ async function boot() {
   loadUsageLog();
   initUsageStats();
   loadUsageStats();
+  loadPrices(); // 价格页预取（切到该页即时渲染）
 }
 boot();
 setInterval(loadOverview, 30000);

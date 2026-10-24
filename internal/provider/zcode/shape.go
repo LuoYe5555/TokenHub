@@ -66,8 +66,9 @@ IMPORTANT: ToolSearch only indexes optional MCP/plugin tools (spreadsheets, mail
 // sessionHex 为会话标识（真实客户端在一个会话内保持不变；按账号稳定可提升上游
 // prompt 缓存亲缘，传空则退化为每次随机）。
 // hint=true 时在 system 末尾追加本地工具引导（2026-10-24 实测必触发 3007，禁用）。
-// tsHint=true 时给 ToolSearch 的 description 追加说明（是否触发风控待验证，默认关）。
-func applyShape(body map[string]any, mode, sessionHex string, hint, tsHint bool) {
+// tsHint=true 时给 ToolSearch 的 description 追加说明（实测不触发风控，降低误搜概率）。
+// stripTS=true 时直接摘除 ToolSearch/DeferExecuteTool（根除误搜，默认开）。
+func applyShape(body map[string]any, mode, sessionHex string, hint, tsHint, stripTS bool) {
 	s := loadShape()
 	if s == nil || mode == "off" {
 		return
@@ -87,10 +88,25 @@ func applyShape(body map[string]any, mode, sessionHex string, hint, tsHint bool)
 	}
 	if tsHint {
 		if tools, ok := body["tools"].([]map[string]any); ok {
-			for _, t := range tools {
-				if t["name"] == "ToolSearch" {
-					if d, _ := t["description"].(string); d != "" {
-						t["description"] = d + tsHintText
+			// stripTS：直接摘除 ToolSearch/DeferExecuteTool。ZCode 原生客户端没有
+			// 这层（工具直接摆台面，所以从不"找不到工具"）；WorkBuddy 的 ToolSearch
+			// 只索引 MCP 插件，模型搜"写文件"只搜到表格/邮件插件后会误判自己没有
+			// 文件工具并死循环。tsHint 描述补丁只能降低概率，摘除才是根除。
+			if stripTS {
+				kept := tools[:0]
+				for _, t := range tools {
+					if t["name"] == "ToolSearch" || t["name"] == "DeferExecuteTool" {
+						continue
+					}
+					kept = append(kept, t)
+				}
+				body["tools"] = kept
+			} else {
+				for _, t := range tools {
+					if t["name"] == "ToolSearch" {
+						if d, _ := t["description"].(string); d != "" {
+							t["description"] = d + tsHintText
+						}
 					}
 				}
 			}

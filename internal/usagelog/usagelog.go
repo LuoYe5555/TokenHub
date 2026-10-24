@@ -8,23 +8,27 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"tokenhub/internal/logx"
 )
 
 // Entry 一次 API 调用的用量记录。
 type Entry struct {
-	Time             int64  `json:"time"` // unix 秒
-	Caller           string `json:"caller"`            // 分享钥匙名称；空 = 主人（主密钥）
-	Provider         string `json:"provider"`
-	Model            string `json:"model"` // 请求里的原始模型名
-	PromptTokens     int64  `json:"promptTokens"`
-	CompletionTokens int64  `json:"completionTokens"`
-	CacheReadTokens  int64  `json:"cacheReadTokens,omitempty"`  // 缓存读取（上游计费包含）
-	CacheWriteTokens int64  `json:"cacheWriteTokens,omitempty"` // 缓存写入（上游计费包含）
-	TotalTokens      int64  `json:"totalTokens"`                // 输入+缓存读写+输出（上游计费口径）
-	SavedTokens      int64  `json:"savedTokens,omitempty"`      // 网关层 token 优化节省的输入估算
-	DurationMs       int64  `json:"durationMs"`
-	Ok               bool   `json:"ok"`
-	ErrMsg           string `json:"errMsg,omitempty"`
+	Time             int64   `json:"time"`   // unix 秒
+	Caller           string  `json:"caller"` // 分享钥匙名称；空 = 主人（主密钥）
+	Provider         string  `json:"provider"`
+	Model            string  `json:"model"` // 请求里的原始模型名
+	PromptTokens     int64   `json:"promptTokens"`
+	CompletionTokens int64   `json:"completionTokens"`
+	CacheReadTokens  int64   `json:"cacheReadTokens,omitempty"`  // 缓存读取（上游计费包含）
+	CacheWriteTokens int64   `json:"cacheWriteTokens,omitempty"` // 缓存写入（上游计费包含）
+	TotalTokens      int64   `json:"totalTokens"`                // 输入+缓存读写+输出（上游计费口径）
+	SavedTokens      int64   `json:"savedTokens,omitempty"`      // 网关层 token 优化节省的输入估算
+	DurationMs       int64   `json:"durationMs"`
+	Ok               bool    `json:"ok"`
+	ErrMsg           string  `json:"errMsg,omitempty"`
+	CostCny          float64 `json:"costCny,omitempty"` // 花费快照（CNY，落账时按当时价格表折算，跨币种已折）
+	CostSrc          string  `json:"costSrc,omitempty"` // 价格来源：openrouter/llmabacus/builtin
 }
 
 // CacheHitRate 输入侧缓存命中率：cache_read ÷ (输入+cache_read+cache_write)。
@@ -40,13 +44,14 @@ const maxEntries = 500
 
 // Daily 当日用量台账（按本地自然日累计，跨重启保留，不受环形缓冲裁剪影响）。
 type Daily struct {
-	Day        string `json:"day"`                  // 2006-01-02（本地时区）
-	Tokens     int64  `json:"tokens"`               // 计费总量（输入+缓存读写+输出）
-	Reqs       int64  `json:"reqs"`
-	InTokens   int64  `json:"inTokens,omitempty"`   // 未命中缓存的输入
-	CacheRead  int64  `json:"cacheRead,omitempty"`  // 缓存读取
-	CacheWrite int64  `json:"cacheWrite,omitempty"` // 缓存写入
-	Saved      int64  `json:"saved,omitempty"`      // 网关层优化节省的输入估算
+	Day        string  `json:"day"`    // 2006-01-02（本地时区）
+	Tokens     int64   `json:"tokens"` // 计费总量（输入+缓存读写+输出）
+	Reqs       int64   `json:"reqs"`
+	InTokens   int64   `json:"inTokens,omitempty"`   // 未命中缓存的输入
+	CacheRead  int64   `json:"cacheRead,omitempty"`  // 缓存读取
+	CacheWrite int64   `json:"cacheWrite,omitempty"` // 缓存写入
+	Saved      int64   `json:"saved,omitempty"`      // 网关层优化节省的输入估算
+	Cost       float64 `json:"cost,omitempty"`       // 花费合计（CNY）
 }
 
 // CacheHitRate 当日输入侧缓存命中率。
@@ -58,6 +63,12 @@ func (d Daily) CacheHitRate() float64 {
 	return float64(d.CacheRead) / float64(in)
 }
 
+// Pricer 价格表最小接口（由 internal/pricing 实现，解耦避免循环依赖）。
+type Pricer interface {
+	Cost(model string, prompt, completion, cacheRead, cacheWrite int64) (cny float64, src string, ok bool)
+	Rate() float64
+}
+
 // Log 环形缓冲的用量日志（新条目在前），落盘 data/usagelog.json。
 type Log struct {
 	mu      sync.Mutex
@@ -66,6 +77,65 @@ type Log struct {
 	// history 按天×模型的用量台账（面板趋势图/环形图用），保留约 60 天
 	history map[string]map[string]*Daily
 	path    string
+	pricer  Pricer // 价格表（可选）：落账时快照花费
+}
+
+// SetPricer 注入价格表（启动时调用一次）。
+func (l *Log) SetPricer(p Pricer) {
+	l.mu.Lock()
+	l.pricer = p
+	l.mu.Unlock()
+}
+
+// Backfill 给没有价格快照的历史数据补计花费（一次性，幂等：只填 Cost==0 的记录）。
+// 台账按天×模型聚合，完成量 = 总量 − 输入 − 缓存读写，分量齐全所以能精确回算。
+func (l *Log) Backfill() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.pricer == nil {
+		return
+	}
+	n := 0
+	// 历史台账
+	for _, models := range l.history {
+		for m, d := range models {
+			if d.Cost != 0 || d.Tokens <= 0 {
+				continue
+			}
+			out := d.Tokens - d.InTokens - d.CacheRead - d.CacheWrite
+			if out < 0 {
+				out = 0
+			}
+			if c, _, ok := l.pricer.Cost(m, d.InTokens, out, d.CacheRead, d.CacheWrite); ok {
+				d.Cost = c
+				n++
+			}
+		}
+	}
+	// 当日台账：跨模型聚合，不能按单一价回算 → 取今天台账各模型花费之和
+	today := time.Now().Format("2006-01-02")
+	if l.daily.Cost == 0 && l.daily.Tokens > 0 {
+		var sum float64
+		for _, d := range l.history[today] {
+			sum += d.Cost
+		}
+		l.daily.Cost = sum
+	}
+	// 环形缓冲明细（今日卡片/明细列表的花费列）
+	for i := range l.entries {
+		e := &l.entries[i]
+		if !e.Ok || e.CostCny != 0 || e.TotalTokens <= 0 {
+			continue
+		}
+		if c, src, ok := l.pricer.Cost(e.Model, e.PromptTokens, e.CompletionTokens, e.CacheReadTokens, e.CacheWriteTokens); ok {
+			e.CostCny, e.CostSrc = c, src
+			n++
+		}
+	}
+	l.persistLocked()
+	if n > 0 {
+		logx.Infof("usage", "已为 %d 条历史用量补计花费（按当前价格表回溯）", n)
+	}
 }
 
 // Load 从数据目录加载（不存在则空日志）。
@@ -121,6 +191,7 @@ func (l *Log) addHistory(e Entry) {
 	d.CacheRead += e.CacheReadTokens
 	d.CacheWrite += e.CacheWriteTokens
 	d.Saved += e.SavedTokens
+	d.Cost += e.CostCny
 }
 
 // pruneHistory 台账保留策略：数据量很小（天×模型聚合行），不再裁剪，
@@ -131,6 +202,12 @@ func (l *Log) pruneHistory() {}
 func (l *Log) Add(e Entry) {
 	if e.Time == 0 {
 		e.Time = time.Now().Unix()
+	}
+	// 花费快照：落账即按「当时」价格表折算成 CNY，历史条目不再受后续调价影响
+	if e.Ok && e.TotalTokens > 0 && l.pricer != nil {
+		if c, src, ok := l.pricer.Cost(e.Model, e.PromptTokens, e.CompletionTokens, e.CacheReadTokens, e.CacheWriteTokens); ok {
+			e.CostCny, e.CostSrc = c, src
+		}
 	}
 	l.mu.Lock()
 	l.entries = append([]Entry{e}, l.entries...)
@@ -149,6 +226,7 @@ func (l *Log) Add(e Entry) {
 		l.daily.CacheRead += e.CacheReadTokens
 		l.daily.CacheWrite += e.CacheWriteTokens
 		l.daily.Saved += e.SavedTokens
+		l.daily.Cost += e.CostCny
 		l.addHistory(e)
 		l.pruneHistory()
 	}
@@ -182,17 +260,18 @@ func (l *Log) Today() Daily {
 	return l.daily
 }
 
-// AllTime 全历史累计（tokens / 请求数，来自持久台账，不受环形缓冲 500 条影响）。
-func (l *Log) AllTime() (tokens, reqs int64) {
+// AllTime 全历史累计（tokens / 请求数 / 花费 CNY，来自持久台账，不受环形缓冲 500 条影响）。
+func (l *Log) AllTime() (tokens, reqs int64, cost float64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, models := range l.history {
 		for _, d := range models {
 			tokens += d.Tokens
 			reqs += d.Reqs
+			cost += d.Cost
 		}
 	}
-	return tokens, reqs
+	return tokens, reqs, cost
 }
 
 // List 返回最近 limit 条（新在前）。
@@ -216,9 +295,10 @@ func (l *Log) List(limit int) []Entry {
 
 // ModelStat 单模型近 N 天合计。
 type ModelStat struct {
-	Model  string `json:"model"`
-	Tokens int64  `json:"tokens"`
-	Reqs   int64  `json:"reqs"`
+	Model  string  `json:"model"`
+	Tokens int64   `json:"tokens"`
+	Reqs   int64   `json:"reqs"`
+	Cost   float64 `json:"cost,omitempty"` // 花费合计（CNY）
 }
 
 // DayStat 单日用量（含分模型明细）。
@@ -234,8 +314,9 @@ type Stats struct {
 	Days       []DayStat   `json:"days"`
 	Models     []ModelStat `json:"models"`
 	Total      int64       `json:"total"`
-	Reqs       int64       `json:"reqs"`      // 范围内成功请求数
+	Reqs       int64       `json:"reqs"`       // 范围内成功请求数
 	SavedTotal int64       `json:"savedTotal"` // 近 N 天累计节省
+	Cost       float64     `json:"cost"`       // 范围内花费合计（CNY）
 }
 
 // Stats 汇总近 days 天（含今天；无数据的日子也占位，保证 x 轴连续）。
@@ -283,6 +364,7 @@ func (l *Log) Stats(days int) *Stats {
 			st.Total += d.Tokens
 			st.Reqs += d.Reqs
 			st.SavedTotal += d.Saved
+			st.Cost += d.Cost
 		}
 	}
 	agg := map[string]*ModelStat{}
@@ -302,6 +384,7 @@ func (l *Log) Stats(days int) *Stats {
 		}
 		for m, d := range models {
 			agg[m].Reqs += d.Reqs
+			agg[m].Cost += d.Cost
 		}
 	}
 	for _, a := range agg {

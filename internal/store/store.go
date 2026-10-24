@@ -47,7 +47,7 @@ type QuotaSnapshot struct {
 // Account 一个第三方账号（凭据 + 运行状态）。
 type Account struct {
 	ID       string `json:"id"`
-	Provider string `json:"provider"` // workbuddy | trae | zcode
+	Provider string `json:"provider"`        // workbuddy | trae | zcode
 	Realm    string `json:"realm,omitempty"` // workbuddy: cn|global；zcode: bigmodel|zai
 	UID      string `json:"uid,omitempty"`
 	Nickname string `json:"nickname,omitempty"`
@@ -86,12 +86,12 @@ const (
 	ExtraTraeAuthEnvelope   = "traeAuthEnv"   // iCubeAuthInfo://icube.cloudide
 	ExtraTraeEntEnvelope    = "traeEntEnv"    // iCubeEntitlementInfo://icube.cloudide
 	ExtraTraeServerEnvelope = "traeServerEnv" // iCubeServerData://icube.cloudide
-	ExtraZCodeDeviceMid = "deviceMid"
-	ExtraZCodeCredentials = "credentials" // 原始 credentials.json 内容（多为 enc:v1 密文）
+	ExtraZCodeDeviceMid     = "deviceMid"
+	ExtraZCodeCredentials   = "credentials" // 原始 credentials.json 内容（多为 enc:v1 密文）
 	ExtraZCodeLoginProvider = "loginProvider"
-	ExtraZCodeBigmodelAT  = "bigmodelAccessToken"
-	ExtraZCodeBigmodelRT  = "bigmodelRefreshToken"
-	ExtraZCodeZaiAT       = "zaiAccessToken"
+	ExtraZCodeBigmodelAT    = "bigmodelAccessToken"
+	ExtraZCodeBigmodelRT    = "bigmodelRefreshToken"
+	ExtraZCodeZaiAT         = "zaiAccessToken"
 )
 
 func NewID() string {

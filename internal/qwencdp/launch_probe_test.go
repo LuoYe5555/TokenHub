@@ -4,9 +4,9 @@ package qwencdp
 //
 //	QWEN_LIVE=1 go test ./internal/qwencdp/ -run TestLaunchProbe -v
 import (
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )

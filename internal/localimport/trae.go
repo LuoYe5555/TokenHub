@@ -224,14 +224,14 @@ func SynthAuthEnvelope(token, refreshToken, uid, nickname, email, host string) (
 		host = "https://api.trae.com.cn"
 	}
 	auth := map[string]any{
-		"token":          token,
-		"refreshToken":   refreshToken,
-		"expiredAt":      time.Now().Add(14 * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z"),
+		"token":            token,
+		"refreshToken":     refreshToken,
+		"expiredAt":        time.Now().Add(14 * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z"),
 		"refreshExpiredAt": time.Now().Add(180 * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z"),
-		"tokenReleaseAt": time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-		"userId":         uid,
-		"host":           host,
-		"userRegion":     map[string]any{"region": "CN", "_aiRegion": "CN"},
+		"tokenReleaseAt":   time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		"userId":           uid,
+		"host":             host,
+		"userRegion":       map[string]any{"region": "CN", "_aiRegion": "CN"},
 		"account": map[string]any{
 			"username": nickname, "iss": "", "iat": 0, "organization": "",
 			"work_country": "", "email": email, "avatar_url": "",

@@ -165,8 +165,8 @@ func (p *Provider) LoginStart(realm string) (state, authURL string, err error) {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			State    string `json:"state"`
-			AuthURL  string `json:"authUrl"`
+			State   string `json:"state"`
+			AuthURL string `json:"authUrl"`
 		} `json:"data"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -341,12 +341,12 @@ func (p *Provider) Quota(ctx context.Context, acct *store.Account) (*store.Quota
 	s := siteFor(acct.Realm, p.cfg.PC(store.PWorkBuddy))
 	now := time.Now()
 	body := map[string]any{
-		"PageNumber":                 1,
-		"PageSize":                   100,
-		"ProductCode":                "p_tcaca",
-		"Status":                     []int{0, 3},
-		"PackageEndTimeRangeBegin":   now.Format("2006-01-02 15:04:05"),
-		"PackageEndTimeRangeEnd":     now.Add(365 * 101 * 24 * time.Hour).Format("2006-01-02 15:04:05"),
+		"PageNumber":               1,
+		"PageSize":                 100,
+		"ProductCode":              "p_tcaca",
+		"Status":                   []int{0, 3},
+		"PackageEndTimeRangeBegin": now.Format("2006-01-02 15:04:05"),
+		"PackageEndTimeRangeEnd":   now.Add(365 * 101 * 24 * time.Hour).Format("2006-01-02 15:04:05"),
 	}
 	h := billingHeaders(s, acct)
 	paths := []string{s.BillingPath + "/get-user-resource"}
@@ -356,7 +356,7 @@ func (p *Provider) Quota(ctx context.Context, acct *store.Account) (*store.Quota
 	var lastErr error
 	for _, path := range paths {
 		var out struct {
-			Code int `json:"code"`
+			Code int    `json:"code"`
 			Msg  string `json:"msg"`
 			Data struct {
 				Response struct {

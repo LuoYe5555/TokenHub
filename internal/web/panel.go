@@ -20,6 +20,7 @@ import (
 	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
+	"tokenhub/internal/pricing"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/zcode"
@@ -42,6 +43,7 @@ type Panel struct {
 	tunnel *tunnel.Manager
 	accel  *accel.Manager
 	ulog   *usagelog.Log
+	prices *pricing.Table
 
 	mu            sync.Mutex
 	wbStates      map[string]string              // state → realm
@@ -104,9 +106,9 @@ type traePending struct {
 	createdAt time.Time
 }
 
-func NewPanel(cfg *config.Config, st *store.Store, pl *pool.Pool, sched *scheduler.Scheduler, sh *shares.Manager, tn *tunnel.Manager, ac *accel.Manager, ul *usagelog.Log) *Panel {
+func NewPanel(cfg *config.Config, st *store.Store, pl *pool.Pool, sched *scheduler.Scheduler, sh *shares.Manager, tn *tunnel.Manager, ac *accel.Manager, ul *usagelog.Log, prices *pricing.Table) *Panel {
 	return &Panel{
-		cfg: cfg, store: st, pl: pl, sched: sched, shares: sh, tunnel: tn, accel: ac, ulog: ul,
+		cfg: cfg, store: st, pl: pl, sched: sched, shares: sh, tunnel: tn, accel: ac, ulog: ul, prices: prices,
 		wbStates:  map[string]string{},
 		zcodeSess: map[string]*zcode.LoginSession{},
 		trae:      map[string]*traePending{},
@@ -212,6 +214,34 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("DELETE /api/panel/shares/{id}", p.handleShareDelete)
 	api("GET /api/panel/usage", p.handleUsageList)
 	api("GET /api/panel/usage/stats", p.handleUsageStats)
+	api("GET /api/panel/prices", p.handlePricesList)
+	api("POST /api/panel/prices/refresh", p.handlePricesRefresh)
+}
+
+// ── 模型价格页 ──
+
+// handlePricesList 全量价格表（价格页展示/搜索用）。
+func (p *Panel) handlePricesList(w http.ResponseWriter, r *http.Request) {
+	if p.prices == nil {
+		writeJSON(w, map[string]any{"models": []any{}, "updatedAt": 0, "rate": 7.2, "count": 0})
+		return
+	}
+	up, rate, count := p.prices.Meta()
+	writeJSON(w, map[string]any{"models": p.prices.All(), "updatedAt": up, "rate": rate, "count": count})
+}
+
+// handlePricesRefresh 手动立即刷新价格表（至少每日一更新由后台循环保证）。
+func (p *Panel) handlePricesRefresh(w http.ResponseWriter, r *http.Request) {
+	if p.prices == nil {
+		writeErr(w, 500, "价格表未启用")
+		return
+	}
+	if err := p.prices.Refresh(r.Context()); err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	up, rate, count := p.prices.Meta()
+	writeJSON(w, map[string]any{"ok": true, "updatedAt": up, "rate": rate, "count": count})
 }
 
 // ── 公网分享（隧道） ──
@@ -278,7 +308,15 @@ func (p *Panel) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
-	writeJSON(w, p.ulog.Stats(days))
+	st := p.ulog.Stats(days)
+	rate := 7.2
+	if p.prices != nil {
+		rate = p.prices.Rate()
+	}
+	writeJSON(w, map[string]any{
+		"days": st.Days, "models": st.Models, "total": st.Total,
+		"reqs": st.Reqs, "savedTotal": st.SavedTotal, "cost": st.Cost, "rate": rate,
+	})
 }
 
 func (p *Panel) handleShareCreate(w http.ResponseWriter, r *http.Request) {
@@ -1131,14 +1169,14 @@ func (p *Panel) handleUsageSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	// 总请求数来自持久台账（按天×模型累计，跨重启保留、无 500 条上限）；
 	// 环形缓冲里的 totalReqs/tracked 仅作最近明细参考。
-	allTokens, allReqs := p.ulog.AllTime()
+	allTokens, allReqs, allCost := p.ulog.AllTime()
 	writeJSON(w, map[string]any{
 		"accounts": accounts,
 		"tokens": map[string]any{
 			"today": todayTokens, "todayReqs": todayReqs, "week": week.Tokens,
 			"cacheHit": cacheHit, "cacheRead": int64(cacheRead), "cacheWrite": int64(cacheWrite),
 			"requests": totalReqs, "ok": totalOk, "tracked": len(entries),
-			"allTokens": allTokens, "allReqs": allReqs,
+			"allTokens": allTokens, "allReqs": allReqs, "costAll": allCost,
 		},
 		"byCaller":   toRows(byCaller),
 		"byProvider": toRows(byProvider),

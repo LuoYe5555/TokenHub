@@ -90,7 +90,7 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 }
 
 type modelsCacheEntry struct {
-	at    time.Time
+	at     time.Time
 	models []provider.ModelInfo
 }
 
@@ -255,6 +255,14 @@ func wbFriendlyError(status int, body []byte) error {
 			"模型在上游不存在或未接入（%s）：国服目录已下线 claude/gpt/gemini，请改用 GLM / Kimi / DeepSeek / 混元 等国服在架模型", env.Msg)
 	case 11101:
 		return provider.Err(provider.KindClient, status, "上游要求流式请求（%s）", env.Msg)
+	case 11140:
+		// 社区/同类网关（DSH workbuddy-gateway）共识：11140=账号级风控拦截（请求未达模型），
+		// 常见诱因：高频调用、异地/多设备登录、内容审核。重试会加重风控，等 2~4h 通常自解。
+		// 按 auth 处理：触发冷却轮换，避免连环请求火上浇油。
+		return provider.Err(provider.KindAuth, status,
+			"上游账号级风控（11140 会话服务异常，%s）：请求被服务端拦截，未到达模型。"+
+				"多为高频调用/异地登录/内容审核触发，建议停用该账号 2~4 小时再试，勿反复重试；"+
+				"持续出现请凭 Trace ID 联系官方（workbuddy_ai@tencent.com）", env.Msg)
 	}
 	return err
 }
@@ -310,6 +318,9 @@ func parseChatSSE(r io.Reader, sentBody map[string]any, sink provider.Sink) erro
 		if len(chunk.Choices) == 0 {
 			if chunk.Error != nil || chunk.Code != nil {
 				code, msg := extractError(chunk.Code, chunk.Error, chunk.Message)
+				if code == 11140 {
+					msg = "上游账号级风控（11140 会话服务异常）：请求被服务端拦截未达模型，勿反复重试，停 2~4 小时通常自解；持续出现请凭 Trace ID 找官方工单"
+				}
 				sink.StreamError(code, msg)
 				return false
 			}

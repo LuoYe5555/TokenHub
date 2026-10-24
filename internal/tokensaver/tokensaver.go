@@ -217,7 +217,7 @@ func Optimize(body []byte, opt Options) ([]byte, Result) {
 }
 
 // normArgsKey 把工具参数规范化为稳定 key：合法 JSON 时解析后重序列化
-//（map 键自动排序，键序/空白差异归一）；非法 JSON 退回压缩形式。
+// （map 键自动排序，键序/空白差异归一）；非法 JSON 退回压缩形式。
 func normArgsKey(args string) string {
 	dec := json.NewDecoder(strings.NewReader(args))
 	dec.UseNumber()

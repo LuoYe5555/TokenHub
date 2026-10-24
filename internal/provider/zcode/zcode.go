@@ -341,7 +341,7 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		sink.Close()
 		return err
 	}
-	applyShape(body, p.cfg.ZCodeInjectShape, stableSessionHex(acct.ID), p.cfg.ZCodeToolHint, p.cfg.ZCodeTSHint)
+	applyShape(body, p.cfg.ZCodeInjectShape, stableSessionHex(acct.ID), p.cfg.ZCodeToolHint, p.cfg.ZCodeTSHint, p.cfg.ZCodeStripTS)
 	raw, err := json.Marshal(body)
 	if err != nil {
 		sink.Close()

@@ -63,7 +63,7 @@ func TestTSHintLive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("形状转换失败: %v", err)
 		}
-		applyShape(body, cfg.ZCodeInjectShape, stableSessionHex(acct.ID), false, tsHint)
+		applyShape(body, cfg.ZCodeInjectShape, stableSessionHex(acct.ID), false, tsHint, false)
 		raw, err := json.Marshal(body)
 		if err != nil {
 			t.Fatal(err)
@@ -129,12 +129,13 @@ func TestTSHintBehaviorLive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := func(tsHint bool) map[string]int {
+	var lastStream []byte
+	run := func(tsHint, stripTS bool) map[string]int {
 		body, err := BuildAnthropicFromOpenAI(raw, "glm-5.3", 16384)
 		if err != nil {
 			t.Fatalf("形状转换失败: %v", err)
 		}
-		applyShape(body, "overwrite", stableSessionHex(acct.ID), false, tsHint)
+		applyShape(body, "overwrite", stableSessionHex(acct.ID), false, tsHint, stripTS)
 		b, _ := json.Marshal(body)
 		h := planMessagesHeaders(acct.AccessToken)
 		if mid := acct.ExtraGet(store.ExtraZCodeDeviceMid); mid != "" {
@@ -153,6 +154,7 @@ func TestTSHintBehaviorLive(t *testing.T) {
 			t.Fatalf("status=%d body=%s", resp.Status, string(resp.Body[:min(len(resp.Body), 200)]))
 		}
 		stream, _ := io.ReadAll(resp.Stream)
+		lastStream = stream
 		// 解析 Anthropic SSE：content_block_start 事件里 content_block.type=tool_use 带 name
 		names := map[string]int{}
 		for _, line := range strings.Split(string(stream), "\n") {
@@ -176,15 +178,16 @@ func TestTSHintBehaviorLive(t *testing.T) {
 		return names
 	}
 
-	off := run(false)
-	t.Logf("A组(tsHint=关): 第一反应工具调用 = %v", off)
+	off := run(false, false)
+	t.Logf("A组(无补丁): 第一反应工具调用 = %v", off)
 	time.Sleep(30 * time.Second)
-	on := run(true)
-	t.Logf("B组(tsHint=开): 第一反应工具调用 = %v", on)
+	on := run(true, true)
+	t.Logf("B组(strip+hint): 第一反应工具调用 = %v", on)
+	_ = os.WriteFile(`C:\Users\30955\Desktop\TokensAPI\.workbuddy\tmp\strip_stream.txt`, lastStream, 0o644)
 	direct := func(m map[string]int) bool {
 		return m["Bash"]+m["Read"]+m["Glob"]+m["Grep"]+m["Write"] > 0
 	}
-	t.Logf(">>> A组直接调文件工具=%v, B组直接调文件工具=%v", direct(off), direct(on))
+	t.Logf(">>> A组直接调文件工具=%v, B组(strip)直接调文件工具=%v", direct(off), direct(on))
 }
 
 func min(a, b int) int {

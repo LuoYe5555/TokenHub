@@ -63,8 +63,8 @@ type Manager struct {
 	publicURL string // http://bore.pub:PORT
 	errMsg    string
 
-	poolMu    sync.Mutex
-	warm      []warmConn // 预热的控制连接（见 takeWarm）
+	poolMu sync.Mutex
+	warm   []warmConn // 预热的控制连接（见 takeWarm）
 }
 
 type warmConn struct {

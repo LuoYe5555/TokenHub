@@ -18,23 +18,31 @@ func EncodeICO(img image.Image) ([]byte, error) {
 	pngBytes := pngBuf.Bytes()
 	// ICONDIR(6) + ICONDIRENTRY(16) + PNG
 	out := make([]byte, 22)
-	out[0] = 0; out[1] = 0 // reserved
-	out[2] = 1; out[3] = 0 // type: icon
-	out[4] = 1; out[5] = 0 // count: 1
+	out[0] = 0
+	out[1] = 0 // reserved
+	out[2] = 1
+	out[3] = 0 // type: icon
+	out[4] = 1
+	out[5] = 0 // count: 1
 	e := out[6:]
-	e[0] = 0                     // width (0 = 256)
-	e[1] = 0                     // height (0 = 256)
-	e[2] = 0                     // color count
-	e[3] = 0                     // reserved
-	e[4] = 1; e[5] = 0           // planes
-	e[6] = 32; e[7] = 0          // bit count
+	e[0] = 0 // width (0 = 256)
+	e[1] = 0 // height (0 = 256)
+	e[2] = 0 // color count
+	e[3] = 0 // reserved
+	e[4] = 1
+	e[5] = 0 // planes
+	e[6] = 32
+	e[7] = 0 // bit count
 	putU32(e[8:], uint32(len(pngBytes)))
 	putU32(e[12:], 22)
 	return append(out, pngBytes...), nil
 }
 
 func putU32(b []byte, v uint32) {
-	b[0] = byte(v); b[1] = byte(v >> 8); b[2] = byte(v >> 16); b[3] = byte(v >> 24)
+	b[0] = byte(v)
+	b[1] = byte(v >> 8)
+	b[2] = byte(v >> 16)
+	b[3] = byte(v >> 24)
 }
 
 // boxScale 区域平均缩放（缩小照片质量优于最近邻）。
@@ -62,7 +70,10 @@ func boxScale(src image.Image, w, h int) image.Image {
 				for sx := sx0; sx < sx1; sx++ {
 					c := src.At(b.Min.X+sx, b.Min.Y+sy)
 					cr, cg, cb, ca := c.RGBA()
-					r += uint64(cr); g += uint64(cg); bl += uint64(cb); a += uint64(ca)
+					r += uint64(cr)
+					g += uint64(cg)
+					bl += uint64(cb)
+					a += uint64(ca)
 					n++
 				}
 			}

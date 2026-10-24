@@ -202,11 +202,11 @@ func classifyTrae(status int, body []byte) *provider.Error {
 func streamSOLO(r io.Reader, sink provider.Sink) error {
 	defer sink.Close()
 	var (
-		usage      *provider.Usage
-		finish     string
-		hasDelta   bool
-		streamErr  *provider.Error
-		sawDone    bool
+		usage     *provider.Usage
+		finish    string
+		hasDelta  bool
+		streamErr *provider.Error
+		sawDone   bool
 	)
 	err := provider.ScanSSE(r, func(ev provider.SSEEvent) bool {
 		switch ev.Event {

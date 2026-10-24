@@ -12,8 +12,8 @@ func wbAsEncrypted(raw json.RawMessage) (wbEncryptedField, bool) { return wbEncr
 func wbDecodeEnvelope(b64 string) (wbEnvelopeEnvelope, error) {
 	return wbEnvelopeEnvelope{}, fmt.Errorf("unsupported")
 }
-func wbPlainString(raw json.RawMessage) string                        { return "" }
-func wbPlainInt(raw json.RawMessage) int64                            { return 0 }
+func wbPlainString(raw json.RawMessage) string { return "" }
+func wbPlainInt(raw json.RawMessage) int64     { return 0 }
 func wbFieldString(raw json.RawMessage, keys map[string][]byte) (string, bool) {
 	return "", false
 }

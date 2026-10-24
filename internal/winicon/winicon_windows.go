@@ -15,11 +15,11 @@ var (
 )
 
 const (
-	wmSetIcon     = 0x0080
-	iconSmall     = 0
-	iconBig       = 1
-	imageIcon     = 1
-	loadFromFile  = 0x00000010
+	wmSetIcon    = 0x0080
+	iconSmall    = 0
+	iconBig      = 1
+	imageIcon    = 1
+	loadFromFile = 0x00000010
 )
 
 // extractIcon 从 ico 文件抽取指定尺寸的 HICON。

@@ -151,8 +151,8 @@ type usageRecorder struct {
 	saved int64 // 网关层 token 优化节省的输入估算（Optimize 时写入）
 }
 
-func (u *usageRecorder) Delta(d provider.Delta)  { u.inner.Delta(d) }
-func (u *usageRecorder) Close()                  { u.inner.Close() }
+func (u *usageRecorder) Delta(d provider.Delta)        { u.inner.Delta(d) }
+func (u *usageRecorder) Close()                        { u.inner.Close() }
 func (u *usageRecorder) StreamError(c int64, m string) { u.inner.StreamError(c, m) }
 
 func (u *usageRecorder) Finish(f provider.Finish) {

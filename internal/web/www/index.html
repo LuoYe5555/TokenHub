@@ -188,6 +188,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="nav-item" data-page="accounts" data-page-node-id="1urA8GmvoDVaGBmXDiC47z"><span class="ico" data-page-node-id="GD9CW1IdRdIpSsP5dvd4zD">👥</span><span data-i18n="nav_accounts" data-page-node-id="6PAfFLPdjGYnhvHzMW1yF4"></span></div>
     <div class="nav-item" data-page="api" data-page-node-id="b2pkRWBhSxbE7OHAf7M4q5"><span class="ico" data-page-node-id="Hz5eWtA9PAzgOgrvWHQLzP">🔌</span><span data-i18n="nav_api" data-page-node-id="SCIS8TGoGYIzPUvnLOQ2Ht"></span></div>
     <div class="nav-item" data-page="usage"><span class="ico">📈</span><span data-i18n="nav_usage"></span></div>
+    <div class="nav-item" data-page="prices"><span class="ico">💰</span><span data-i18n="nav_prices"></span></div>
     <div class="nav-item" data-page="logs" data-page-node-id="v1r2oJWPgpFtF4jbEzfh20"><span class="ico" data-page-node-id="f5sSpT2zYgaahWq19FF0R9">📜</span><span data-i18n="nav_logs" data-page-node-id="ThYBnfeI77cAl5sZz8SHtz"></span></div>
     <div class="nav-item" data-page="settings" data-page-node-id="JawgsrOJPD6dYNMXEpmzQ1"><span class="ico" data-page-node-id="k70m3J95Dk4y87IKlkiNLt">⚙️</span><span data-i18n="nav_settings" data-page-node-id="SOeFStMBllOHv0sCyvwvjz"></span></div>
   </nav>
@@ -338,6 +339,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
       </div>
       <div id="usTrend" style="margin-bottom:6px"></div>
       <div id="usDonut" style="margin-bottom:10px"></div>
+      <!-- 花费统计：总额 + 按模型花费饼图，¥/$ 可切换 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">
+        <div style="font-size:13px;font-weight:600" data-i18n="usage_cost_title"></div>
+        <button class="sm" id="usCostToggle" title="" style="font-family:var(--mono)">¥</button>
+      </div>
+      <div id="usCost"></div>
     </div>
     <div class="card" style="margin-bottom:14px">
       <h3 data-i18n="usage_quota_title"></h3>
@@ -355,6 +362,23 @@ button:disabled{opacity:.5;cursor:not-allowed}
         <table class="utable"><thead id="usageHead"></thead><tbody id="usageList"></tbody></table>
       </div>
       <div id="usagePager" style="display:none;align-items:center;justify-content:center;gap:6px;padding:10px 0 2px"></div>
+    </div>
+  </section>
+
+  <!-- 模型价格 -->
+  <section class="page" id="page-prices">
+    <div class="spread"><div><h1 data-i18n="price_title"></h1><div class="sub" data-i18n="price_sub"></div></div>
+      <button class="sm" id="btnPriceRefresh" data-i18n="price_refresh"></button>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <input type="text" id="priceSearch" data-i18n-ph="price_search_ph" style="flex:1;min-width:220px" placeholder="">
+        <span id="priceMeta" style="opacity:.6;font-size:12px;white-space:nowrap"></span>
+      </div>
+      <div style="overflow-x:auto;max-height:calc(100vh - 300px);overflow-y:auto">
+        <table class="utable"><thead id="priceHead"></thead><tbody id="priceList"></tbody></table>
+      </div>
+      <div class="hint" data-i18n="price_currency_note"></div>
     </div>
   </section>
 

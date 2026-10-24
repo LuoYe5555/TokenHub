@@ -37,9 +37,9 @@ var Transport = &http.Transport{
 // 返回 401/404/405 无所谓 —— 目的只是让连接池里始终有热连接），
 // 让每次请求都能复用连接，省掉握手延迟，也减少客户端超时重试。
 var (
-	warmMu    sync.Mutex
-	warmURLs  = map[string]bool{}
-	warmOnce  sync.Once
+	warmMu   sync.Mutex
+	warmURLs = map[string]bool{}
+	warmOnce sync.Once
 )
 
 // RegisterWarm 注册需要保持热连接的上游地址（重复注册自动去重）。
@@ -95,7 +95,7 @@ func warmAll() {
 type Response struct {
 	Status      int
 	Header      http.Header
-	Body        []byte      // 仅非流式
+	Body        []byte        // 仅非流式
 	Stream      io.ReadCloser // 仅流式
 	ContentType string
 }

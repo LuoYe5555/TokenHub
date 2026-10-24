@@ -65,21 +65,21 @@ func ugBase(pc *config.ProviderConfig) string {
 
 func soloHeaders(a *store.Account) map[string]string {
 	h := map[string]string{
-		"Content-Type":          "application/json",
-		"Accept":                "text/event-stream",
-		"User-Agent":            clientUA,
-		"X-Cloudide-Token":      a.AccessToken,
-		"X-Ide-Token":           a.AccessToken,
-		"X-App-Id":              AppID,
-		"X-App-Version":         "default",
-		"X-Ide-Version":         IdeVersion,
-		"X-Ide-Version-Code":    IdeVersionCode,
-		"X-App-Version-Code":    IdeVersionCode,
-		"X-Ide-Version-Type":    "stable",
-		"X-Device-Type":         "windows",
-		"X-OS-Version":          OSVersion,
-		"X-Device-Brand":        DeviceBrand,
-		"Request-Traffic-Type":  "prod",
+		"Content-Type":         "application/json",
+		"Accept":               "text/event-stream",
+		"User-Agent":           clientUA,
+		"X-Cloudide-Token":     a.AccessToken,
+		"X-Ide-Token":          a.AccessToken,
+		"X-App-Id":             AppID,
+		"X-App-Version":        "default",
+		"X-Ide-Version":        IdeVersion,
+		"X-Ide-Version-Code":   IdeVersionCode,
+		"X-App-Version-Code":   IdeVersionCode,
+		"X-Ide-Version-Type":   "stable",
+		"X-Device-Type":        "windows",
+		"X-OS-Version":         OSVersion,
+		"X-Device-Brand":       DeviceBrand,
+		"Request-Traffic-Type": "prod",
 	}
 	if a.AccessToken != "" {
 		h["Authorization"] = "Cloud-IDE-JWT " + a.AccessToken
@@ -98,14 +98,14 @@ func soloHeaders(a *store.Account) map[string]string {
 
 func ugHeaders(a *store.Account) map[string]string {
 	h := map[string]string{
-		"Content-Type":   "application/json",
-		"Accept":         "application/json",
-		"User-Agent":     clientUA,
-		"Authorization":  "Cloud-IDE-JWT " + a.AccessToken,
-		"X-User-Region":  "CN",
-		"X-Device-Type":  "Windows",
-		"X-OS-Version":   "10.0.19045",
-		"X-App-Version":  IdeVersion,
+		"Content-Type":  "application/json",
+		"Accept":        "application/json",
+		"User-Agent":    clientUA,
+		"Authorization": "Cloud-IDE-JWT " + a.AccessToken,
+		"X-User-Region": "CN",
+		"X-Device-Type": "Windows",
+		"X-OS-Version":  "10.0.19045",
+		"X-App-Version": IdeVersion,
 	}
 	if did := a.ExtraGet(store.ExtraTraeDeviceID); did != "" {
 		h["X-Device-Id"] = did
@@ -418,7 +418,7 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 		return false, fmt.Sprintf("签到成功 +%g 积分", credits), nil
 	}
 	if msg != "" {
-		return false, "签到成功: "+msg, nil
+		return false, "签到成功: " + msg, nil
 	}
 	return false, "签到成功", nil
 }

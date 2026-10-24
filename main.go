@@ -24,6 +24,7 @@ import (
 	"tokenhub/internal/localimport"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
+	"tokenhub/internal/pricing"
 	"tokenhub/internal/provider/ollama"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
@@ -124,6 +125,12 @@ func main() {
 		return
 	}
 	ulog := usagelog.Load(*dataDir)
+	// 价格表：OpenRouter + LLMabacus 每日刷新，离线用内置国产价兜底；
+	// 用量日志落账时按当时价格快照花费（历史记录不受调价影响）
+	prices := pricing.Load(*dataDir)
+	prices.Start(ctx)
+	ulog.SetPricer(prices)
+	ulog.Backfill() // 给历史用量补计花费（幂等：只填没有价格快照的记录）
 	// 调用后自动同步额度：每次 API 调用完成后异步刷新一次全量快照（scheduler 内部去抖），
 	// 保证用量页「今日 tokens」与各账号「已用」实时一致。
 	gw := gateway.New(cfg, pl, sh, ulog)
@@ -165,7 +172,7 @@ func main() {
 		}
 	}
 
-	panel := web.NewPanel(cfg, st, pl, sched, sh, tunnelMgr, acc, ulog)
+	panel := web.NewPanel(cfg, st, pl, sched, sh, tunnelMgr, acc, ulog, prices)
 	mux := http.NewServeMux()
 	gw.Register(mux)
 	panel.Register(mux)

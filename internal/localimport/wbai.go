@@ -287,16 +287,16 @@ drain:
 func wbProcessIDs(image string) []uint32 {
 	const th32csSnapProcess = 0x2
 	type procEntry struct {
-		Size              uint32
-		Usage             uint32
-		ProcessID         uint32
-		DefaultHeap       uintptr
-		ModuleID          uint32
-		Threads           uint32
-		ParentProcessID   uint32
-		PriClassBase      int32
-		Flags             uint32
-		ExeFile           [260]uint16
+		Size            uint32
+		Usage           uint32
+		ProcessID       uint32
+		DefaultHeap     uintptr
+		ModuleID        uint32
+		Threads         uint32
+		ParentProcessID uint32
+		PriClassBase    int32
+		Flags           uint32
+		ExeFile         [260]uint16
 	}
 	mod := syscall.NewLazyDLL("kernel32.dll")
 	pSnap := mod.NewProc("CreateToolhelp32Snapshot")

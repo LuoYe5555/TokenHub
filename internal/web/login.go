@@ -480,10 +480,10 @@ func (p *Panel) handleZcodePlans(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleZcodeClaim(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ID          string `json:"id"`
-		PlanID      string `json:"planId"`
-		Captcha     string `json:"captchaParam"`
-		Region      string `json:"region"`
+		ID      string `json:"id"`
+		PlanID  string `json:"planId"`
+		Captcha string `json:"captchaParam"`
+		Region  string `json:"region"`
 	}
 	if err := readBody(r, &in); err != nil {
 		writeErr(w, 400, err.Error())

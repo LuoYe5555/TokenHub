@@ -40,7 +40,7 @@ func ScanSSE(r io.Reader, fn func(ev SSEEvent) bool) error {
 			if !flush() {
 				return nil
 			}
-		// 注释行（:xxx）与 id:/retry: 忽略
+			// 注释行（:xxx）与 id:/retry: 忽略
 		}
 		if err != nil {
 			// EOF 或读错误：把残余事件冲掉

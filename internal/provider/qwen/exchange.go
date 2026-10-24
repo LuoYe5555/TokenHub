@@ -44,17 +44,17 @@ func ExchangeRefresh(ctx context.Context, base, refreshToken string) (*ExchangeR
 		} `json:"data"`
 	}
 	h := map[string]string{
-		"cookie":            "refresh_token=" + rt,
-		"accept":            "application/json, text/plain, */*",
-		"source":            "web",
-		"version":           version,
-		"user-agent":        userAgent,
-		"referer":           base + "/",
-		"x-request-origin":  base,
-		"x-request-id":      provider.NewUUID(),
-		"timezone":          timezone,
-		"sec-ch-ua":         `"Chromium";v="145", "Google Chrome";v="145", "Not?A_Brand";v="99"`,
-		"sec-ch-ua-mobile":  "?0",
+		"cookie":             "refresh_token=" + rt,
+		"accept":             "application/json, text/plain, */*",
+		"source":             "web",
+		"version":            version,
+		"user-agent":         userAgent,
+		"referer":            base + "/",
+		"x-request-origin":   base,
+		"x-request-id":       provider.NewUUID(),
+		"timezone":           timezone,
+		"sec-ch-ua":          `"Chromium";v="145", "Google Chrome";v="145", "Not?A_Brand";v="99"`,
+		"sec-ch-ua-mobile":   "?0",
 		"sec-ch-ua-platform": `"Windows"`,
 	}
 	status, err := httpx.DoJSON(ctx, "GET", authBase+"/api/v2/auths/refresh", h, nil, &out, 30*time.Second)

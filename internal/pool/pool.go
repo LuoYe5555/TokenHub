@@ -22,8 +22,8 @@ type Pool struct {
 	store      *store.Store
 	mu         sync.RWMutex
 	providers  map[string]provider.Provider
-	rr         map[string]int    // provider → 轮换游标
-	failStreak map[string]int    // 账号 → 连续失败次数（内存级，重启归零；成功即清零）
+	rr         map[string]int // provider → 轮换游标
+	failStreak map[string]int // 账号 → 连续失败次数（内存级，重启归零；成功即清零）
 }
 
 func New(cfg *config.Config, st *store.Store) *Pool {
@@ -171,9 +171,9 @@ func (t *trackingSink) Delta(d provider.Delta) {
 	}
 	t.inner.Delta(d)
 }
-func (t *trackingSink) Finish(f provider.Finish)           { t.inner.Finish(f) }
-func (t *trackingSink) StreamError(c int64, m string)      { t.inner.StreamError(c, m) }
-func (t *trackingSink) Close()                             { t.inner.Close() }
+func (t *trackingSink) Finish(f provider.Finish)      { t.inner.Finish(f) }
+func (t *trackingSink) StreamError(c int64, m string) { t.inner.StreamError(c, m) }
+func (t *trackingSink) Close()                        { t.inner.Close() }
 
 // RefreshAccount 刷新账号凭据，统一入口（面板按钮 / 定时任务 / 请求时按需刷新共用）。
 // 策略：有 refreshToken 先走上游刷新；没有、或刷新失败（可能 refreshToken 已被
@@ -433,7 +433,7 @@ func (p *Pool) Status() []AccountStatus {
 			ID: a.ID, Provider: a.Provider, Realm: a.Realm, Nickname: a.DisplayedName(), UID: a.UID,
 			Enabled: a.Enabled, Dead: a.Dead, DeadReason: a.DeadReason,
 			CooldownUntil: a.CooldownUntil, CooldownReason: a.CooldownReason,
-			ExpiresAt: a.ExpiresAt,
+			ExpiresAt:      a.ExpiresAt,
 			LastCheckinDay: a.LastCheckinDay, LastCheckinMsg: a.LastCheckinMsg, LastCheckinAt: a.LastCheckinAt,
 			Quota: a.LastQuota,
 		}

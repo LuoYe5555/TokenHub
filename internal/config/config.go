@@ -60,7 +60,8 @@ type Config struct {
 	// ZCode 请求形状注入：overwrite=整体替换 system（最稳，移植自实测流量）；prepend=前置；off=不注入
 	ZCodeInjectShape string `json:"zcodeInjectShape"`
 	ZCodeToolHint    bool   `json:"zcodeToolHint,omitempty"` // 实验性：注入本地工具引导（可能触发上游 3007，默认关）
-	ZCodeTSHint      bool   `json:"zcodeTsHint,omitempty"`   // 实验性：给 ToolSearch 描述追加"内置工具已加载"说明（是否触发 3007 待验证，默认关）
+	ZCodeTSHint      bool   `json:"zcodeTsHint,omitempty"`   // 实验性：给 ToolSearch 描述追加"内置工具已加载"说明（实测不触发 3007）
+	ZCodeStripTS     bool   `json:"zcodeStripToolSearch"`    // 摘除 ToolSearch/DeferExecuteTool（根除"找不到工具"死循环；代价：zcode 模型用不了 WorkBuddy 插件工具）
 
 	QuotaRefreshSec    float64 `json:"quotaRefreshSec"`    // 额度自动刷新周期（秒，支持 0.5 等小数），0=关闭
 	TraeAutoSwitch     bool    `json:"traeAutoSwitch"`     // 定时刷新发现 Trae 积分耗尽时，自动冷却该号切换下一个
@@ -114,7 +115,9 @@ func Default() *Config {
 		WBIntlKeepalive:       false,
 		ZCodeAutoClaim:        true,
 		ZCodeClaimIntervalMin: 30,
-		ZCodeInjectShape:      "prepend",
+		ZCodeInjectShape:      "overwrite",
+		ZCodeTSHint:           true, // ToolSearch 描述补丁：实测(10-24)不触发 3007
+		ZCodeStripTS:          true, // 摘除 ToolSearch/DeferExecuteTool：复刻 ZCode 原生环境，根除"找不到工具"
 		PJMode:                "off",
 
 		QuotaRefreshSec:    300,
