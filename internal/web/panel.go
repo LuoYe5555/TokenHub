@@ -194,6 +194,7 @@ func (p *Panel) Register(mux *http.ServeMux) {
 		})
 	}
 	api("POST /api/panel/import-local/workbuddy", p.handleImportLocalWB)
+	api("POST /api/panel/import/workbuddy-file", p.handleImportWBSwitch)
 	api("POST /api/panel/import-local/trae", p.handleImportLocalTrae)
 	api("POST /api/panel/import-local/zcode", p.handleZcodeImportLocal)
 	api("POST /api/panel/zcode/import-local", p.handleZcodeImportLocal)

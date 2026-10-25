@@ -16,7 +16,7 @@
 
 1. 双击 `TokenHub.exe`（首次运行自动生成 `data\` 目录、随机 API Key 并打开面板）
 2. 面板 → **账号** → 添加账号：
-   - **WorkBuddy / CodeBuddy**：选国内/国际版 → 授权页登录 → 自动回填
+   - **WorkBuddy / CodeBuddy**：选国内/国际版 → 授权页登录 → 自动回填；也可「从本机 CodeBuddy 导入」，或「导入 wb-switch 文件」批量导入（见下）
    - **Trae**：授权页扫码登录 → 自动回填（回调页打不开时把地址栏链接粘贴进面板）
    - **ZCode**：选 BigModel / Z.ai 渠道 → 授权登录，或一键从本机 ZCode 客户端导入
    - **千问**：点「一键浏览器导入」→ 在弹出的窗口里登录 chat.qwen.ai → 自动完成（令牌过期自动续期）；也可手动粘贴 Token
@@ -33,6 +33,30 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 - `model` 支持 **前缀指定提供商**：`trae:glm-5.2`、`workbuddy:claude-sonnet-4.6`、`zcode:glm-5.3`、`qwen:qwen3.8-max`（简写 `qw:` / `qwen-web:` 也认）
 - 不带前缀按 `defaultProvider` 与 `modelRoutes` 路由（面板 → 设置）
 - 思考控制（千问）：模型名加后缀 `-thinking` / `-no-thinking`
+
+## 导入 wb-switch 账号文件
+
+**wb-switch** 是第三方 WorkBuddy 账号切换工具，它能把自己收藏的多个账号导出成一个 JSON 文件。TokenHub 可以直接吃这个文件：
+
+面板 → **账号** → 添加账号 → **WorkBuddy** → 「📄 导入 wb-switch 文件」，选文件或把文件拖到按钮上：
+
+1. 先**预演**（不落盘）：逐条列出新增 / 更新 / 跳过 / 无效，以及每条的到期时间和警告
+2. 确认无误后点「确认导入」才真正写入
+
+去重按 `uid`：已有账号更新凭据（保留原 ID、启用状态与签到记录），新账号直接新增；凭据完全相同的记为「跳过」。
+
+支持的字段（对命名风格宽容，`snake_case` / `camelCase` 都认）：
+
+| wb-switch 字段 | 映射到 | 说明 |
+|---|---|---|
+| `access_token` / `refresh_token` | `AccessToken` / `RefreshToken` | 缺失时回退到 `auth_raw` 里的同名字段 |
+| `uid` | `UID` | 去重键；缺失时尝试从 `profile_raw.uid` 或令牌载荷推断 |
+| `variant: cn` / `intl` | `Realm: cn` / `global` | 缺失时按 `domain` 推断（`*.workbuddy.ai` → 国际版） |
+| `expiresAt` / `refreshExpiresAt` | `ExpiresAt` | 毫秒自动折算成秒；缺失时用 `auth_raw.expiresIn` 推算 |
+| `domain` / `nickname` / `email` / `enterpriseId` | 同名字段 | 为 `null` 时忽略 |
+| `auth_raw.sessionState`、`profile_raw.uin/phoneNumber` | `Extra` | 仅保留作展示与诊断，不参与鉴权 |
+
+`access_token` 已过期但 `refresh_token` 仍有效的记录照样能导入（首次调用会自动续期）；两个都过期的会带警告导入，需要重新登录。
 
 ## 自动领取
 
