@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package winproc Windows 子进程辅助：统一隐藏控制台窗口。
 // 主程序为 windowsgui 无控制台，直接 exec 控制台程序（taskkill/reg/powershell 等）
 // 会闪烁黑色 CMD 窗口；统一加 CREATE_NO_WINDOW 消除。

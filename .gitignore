@@ -1,8 +1,10 @@
 # 运行数据：含账号凭据 / API Key / 分享钥匙 / 用量日志，严禁提交
 data/
 
-# 构建产物：不入库（本地跑 scripts\build.cmd 生成；分发走 Releases）
+# 构建产物：不入库（本地跑 scripts\build.cmd 或 scripts/build.sh 生成；分发走 Releases）
 *.exe
+/TokenHub
+/TokenHub-*
 
 # 本地杂物
 *.log

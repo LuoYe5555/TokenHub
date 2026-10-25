@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package autoslide 用 Windows SendInput 在操作系统层模拟真人滑块拖拽。
 // SendInput 产生的事件与真实鼠标硬件事件一致（trusted），配合真实 WebView2
 // 窗口，对阿里云风控来说与真人手滑无异。

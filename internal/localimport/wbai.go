@@ -23,23 +23,6 @@ import (
 	"unsafe"
 )
 
-const wbFieldFramingMagic = "WBEV1" // field 级信封的 framing 标记
-
-// wbEnvelopeEnvelope .info 里 envelope 字段解 base64 后的 JSON
-type wbEnvelopeEnvelope struct {
-	Suite      int    `json:"suite"`
-	KeyID      string `json:"keyId"`
-	Nonce      string `json:"nonce"`
-	AuthTag    string `json:"authTag"`
-	Ciphertext string `json:"ciphertext"`
-}
-
-// wbEncryptedField .info 字段值可能出现的加密包装
-type wbEncryptedField struct {
-	WBEncrypted int    `json:"$wbEncrypted"`
-	Envelope    string `json:"envelope"`
-}
-
 // wbAAD 复刻 buildAuthenticatedContextAad 的 sym-v1 分支：
 // "WB-AAD\0" || 0x01 || lenp(framingMagic) || lenp("sym-v1") || uint32BE(suite)
 // || lenp(keyId) || [framing枚举] || 0x00(seq缺省) || 0x00(final缺省)

@@ -4,7 +4,7 @@
 
 > ⚠️ **仅限个人自用，请勿贩卖或商用。** 凭据只保存在本机。
 
-单文件 `TokenHub.exe`（Go 编写，无外部依赖），双击即用。可执行文件从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载，或自行[从源码构建](#从源码构建)（仓库不存放构建产物）：
+单文件可执行程序（Go 编写，无外部依赖）：Windows 双击 `TokenHub.exe` 即用，Linux / macOS 从源码构建后运行。可执行文件从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载，或自行[从源码构建](#从源码构建)（仓库不存放构建产物）：
 
 - **Web 面板**：多账号管理、额度查看、用量日志、中英双语
 - **多账号池**：同一家可挂多个账号自动轮换；额度耗尽 / 限流 / 凭据失效自动冷却切换
@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-1. 双击 `TokenHub.exe`（首次运行自动生成 `data\` 目录、随机 API Key 并打开面板）
+1. Windows 双击 `TokenHub.exe`；Linux / macOS 运行 `./TokenHub`（首次运行自动生成 `data/` 目录、随机 API Key 并打开面板）
 2. 面板 → **账号** → 添加账号：
    - **WorkBuddy / CodeBuddy**：选国内/国际版 → 授权页登录 → 自动回填；也可「从本机 CodeBuddy 导入」，或「导入 wb-switch 文件」批量导入（见下）
    - **Trae**：授权页扫码登录 → 自动回填（回调页打不开时把地址栏链接粘贴进面板）
@@ -77,20 +77,42 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 
 ## 配置与数据
 
-- 配置：`data\config.json`（端口 `8687`、`defaultProvider`、自动签到开关、上游地址覆盖等，均有注释）
-- 数据：账号凭据 `data\accounts.json`、分享钥匙 `data\shares.json`、日志 `data\logs\`——删除 `data\` 即卸载
+- 配置：`data/config.json`（端口 `8687`、`defaultProvider`、自动签到开关、上游地址覆盖等，均有注释）
+- 数据：账号凭据 `data/accounts.json`、分享钥匙 `data/shares.json`、日志 `data/logs/`——删除 `data/` 即卸载
 - 端口占用：改 `config.json` 的 `port`，或启动参数 `-port 8688`
+
+## 平台支持
+
+网关、面板、账号池、签到/领取、公网分享都是纯 Go 实现，三个平台都能跑。少数依赖系统能力的功能只在 Windows 可用：
+
+| 功能 | Windows | Linux / macOS |
+|---|---|---|
+| 网关 / 面板 / 账号池 / 签到领取 / 公网分享 | ✅ | ✅ |
+| 桌面窗口（WebView2 内嵌面板） | ✅ | — 用浏览器访问（启动时自动打开） |
+| 从本机客户端导入（WorkBuddy / Trae） | ✅ | — 读不到 Windows 客户端目录，改用授权登录 |
+| ZCode 本机导入 | ✅ | ✅（`~/.zcode/v2/credentials.json`） |
+| 千问「一键浏览器导入」 | ✅ | ✅ 需装 Chrome / Chromium（可用 `QWEN_BROWSER` 指定路径） |
+| ZCode 自动过滑块（SendInput） | ✅ | — 需在弹出的窗口里手动完成验证 |
+| 网络加速的系统代理接管 | ✅ | — 本地代理仍可手动指向 |
+| Trae 客户端登录切换 / 会话迁移 | ✅ | — |
 
 ## 从源码构建
 
 ```
-scripts\build.cmd        （需要 Go 1.22+，产物 TokenHub.exe）
+Windows：      scripts\build.cmd     （需要 Go 1.27+，产物 TokenHub.exe）
+Linux / macOS：scripts/build.sh      （产物 ./TokenHub，CGO_ENABLED=0 静态链接）
 ```
 
-构建产物（`TokenHub.exe`、`scripts\mock\mock.exe`）不入库，`.gitignore` 已排除；需要可执行文件请自行构建，或从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载。
+交叉编译（在 Windows 上产出 Linux 版）：
+
+```
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o TokenHub .
+```
+
+构建产物（`TokenHub`、`TokenHub.exe`、`scripts/mock/mock*`）不入库，`.gitignore` 已排除；需要可执行文件请自行构建，或从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载。
 
 ## 许可证
 
-[MIT](LICENSE)。仅供个人学习与自用，请遵守各服务商用户协议，账号风险自行承担；`data\` 已被 `.gitignore` 排除，凭据不会被提交。
+[MIT](LICENSE)。仅供个人学习与自用，请遵守各服务商用户协议，账号风险自行承担；`data/` 已被 `.gitignore` 排除，凭据不会被提交。
 
 > bore 协议参考 [ekzhang/bore](https://github.com/ekzhang/bore) v0.5.0（MIT），Go 原生实现，无需额外程序。
