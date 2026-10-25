@@ -438,6 +438,45 @@ func (p *Panel) handleImportLocalWB(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "found": len(accts), "added": added})
 }
 
+// handleImportWBSwitch 导入 wb-switch（第三方 WorkBuddy 账号切换工具）导出的账号文件。
+// 文件为 JSON 数组，字段为 snake_case（access_token / refresh_token / variant…），
+// 内嵌 auth_raw / profile_raw 原始响应；dryRun=true 时只解析并预览，不落盘。
+func (p *Panel) handleImportWBSwitch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Data   string `json:"data"`
+		DryRun bool   `json:"dryRun"`
+	}
+	if err := readBody(r, &in); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if strings.TrimSpace(in.Data) == "" {
+		writeErr(w, 400, "请选择 wb-switch 导出的 JSON 文件（或粘贴文件内容）")
+		return
+	}
+	entries, err := localimport.ParseWBSwitchFile([]byte(in.Data))
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if len(entries) == 0 {
+		writeErr(w, 400, "文件里没有账号记录")
+		return
+	}
+	rep := localimport.ApplyWBSwitch(p.store, entries, in.DryRun)
+	if !in.DryRun {
+		logx.Infof("panel", "wb-switch 导入：发现 %d，新增 %d，更新 %d，跳过 %d，无效 %d",
+			rep.Found, rep.Added, rep.Updated, rep.Skipped, rep.Invalid)
+		for _, e := range entries {
+			// refresh_token 也过期的记录不必再查额度/签到（避免给死号刷失败日志）
+			if e.Account != nil && e.Account.ID != "" && !e.RefreshDead {
+				go p.afterAdd(e.Account)
+			}
+		}
+	}
+	writeJSON(w, rep)
+}
+
 // handleImportLocalTrae 读取本机 Trae 客户端登录（tc 信封解密，不导入 refreshToken 以免踢掉 IDE 登录）。
 func (p *Panel) handleImportLocalTrae(w http.ResponseWriter, r *http.Request) {
 	accts := localimport.TraeLocal()

@@ -21,6 +21,11 @@ const (
 	POllama    = "ollama"
 )
 
+// GitCommit 构建时由 -ldflags -X 注入（git rev-parse --short HEAD），
+// 自动更新用它与 release tag（release-<commit>）比对；空表示开发构建。
+// 注意必须是 var（ldflags -X 不支持 const）。
+var GitCommit = ""
+
 func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama} }
 
 // ProviderConfig 单个提供商的开关与上游地址覆盖（上游接口变更时使用）。
@@ -52,6 +57,7 @@ type Config struct {
 
 	// 自动领取
 	AutoCheckin           bool  `json:"autoCheckin"`           // 每日签到（WorkBuddy CN / Trae）
+	AutoUpdate            bool  `json:"autoUpdate,omitempty"`  // 自动更新：比对 GitHub release tag 与本地构建 commit
 	CheckinHours          []int `json:"checkinHours"`          // 每天这些整点尝试签到（当日已签自动跳过）
 	WBIntlKeepalive       bool  `json:"wbIntlKeepalive"`       // WorkBuddy 国际版无签到，用一条极小对话保活
 	ZCodeAutoClaim        bool  `json:"zcodeAutoClaim"`        // ZCode 活动套餐自动轮询领取
@@ -111,6 +117,7 @@ func Default() *Config {
 		},
 
 		AutoCheckin:           true,
+		AutoUpdate:            false, // 自动更新默认关（2026-10-25 用户要求）：更新时机自己掌控，设置页可开
 		CheckinHours:          []int{9, 21},
 		WBIntlKeepalive:       false,
 		ZCodeAutoClaim:        true,

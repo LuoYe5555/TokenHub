@@ -20,10 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
-
-	"golang.org/x/sys/windows/registry"
 )
 
 // Cookie CDP 返回的 cookie 子集。
@@ -35,51 +32,10 @@ type Cookie struct {
 
 const createNoWindow = 0x08000000
 
-// FindBrowser 找系统 Edge / Chrome（环境变量路径 + 注册表 App Paths 兜底）。
-func FindBrowser() string {
-	pf := os.Getenv("ProgramFiles")
-	pf86 := os.Getenv("ProgramFiles(x86)")
-	lpf := os.Getenv("LocalAppData")
-	cands := []string{
-		filepath.Join(pf86, `Microsoft\Edge\Application\msedge.exe`),
-		filepath.Join(pf, `Microsoft\Edge\Application\msedge.exe`),
-		filepath.Join(lpf, `Microsoft\Edge\Application\msedge.exe`),
-		filepath.Join(pf, `Google\Chrome\Application\chrome.exe`),
-		filepath.Join(pf86, `Google\Chrome\Application\chrome.exe`),
-		filepath.Join(lpf, `Google\Chrome\Application\chrome.exe`),
-	}
-	for _, c := range cands {
-		if c != "" && fileExists(c) {
-			return c
-		}
-	}
-	// 环境变量缺失（精简系统/受限环境）时从注册表 App Paths 找
-	for _, name := range []string{`msedge.exe`, `chrome.exe`} {
-		if p := regAppPath(name); p != "" && fileExists(p) {
-			return p
-		}
-	}
-	return ""
-}
+// FindBrowser 找系统浏览器（Windows：Edge/Chrome + 注册表兜底；其他平台：
+// Chrome/Chromium/Edge 常见安装路径与 PATH）。实现见 cdp_windows.go / cdp_other.go。
 
-// regAppPath 查 HKLM/HKCU 的 App Paths 注册表项。
-func regAppPath(exeName string) string {
-	for _, root := range []string{`SOFTWARE`, `SOFTWARE\WOW6432Node`} {
-		for _, hive := range []registry.Key{registry.LOCAL_MACHINE, registry.CURRENT_USER} {
-			k, err := registry.OpenKey(hive, ``+root+`\Microsoft\Windows\CurrentVersion\App Paths\`+exeName, registry.QUERY_VALUE)
-			if err != nil {
-				continue
-			}
-			v, _, err := k.GetStringValue("")
-			k.Close()
-			if err == nil && v != "" {
-				return v
-			}
-		}
-	}
-	return ""
-}
-
+// fileExists 文件存在且非目录。
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
@@ -96,6 +52,7 @@ func FreePort() (int, error) {
 }
 
 // Launch 启动浏览器（headed 登录 / headless 取 cookie），返回已启动进程。
+// 参数拼装跨平台一致；进程属性（隐藏窗口等）由各平台实现处理。
 func Launch(exe, profileDir string, port int, url string, headless bool) (*exec.Cmd, error) {
 	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		return nil, err
@@ -113,7 +70,7 @@ func Launch(exe, profileDir string, port int, url string, headless bool) (*exec.
 	}
 	args = append(args, url)
 	cmd := exec.Command(exe, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	setSysProcAttr(cmd, createNoWindow)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

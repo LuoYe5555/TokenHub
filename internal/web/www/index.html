@@ -324,7 +324,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="spread"><div><h1 data-i18n="usage_title"></h1><div class="sub" data-i18n="usage_sub"></div></div>
       <button class="sm" id="btnReloadUsage" data-i18n="usage_reload"></button>
     </div>
-    <div class="row" id="usageCards" style="gap:12px;margin-bottom:14px"></div>
+    <div class="row" id="usageCards" style="gap:12px;margin-bottom:14px;align-items:stretch"></div>
     <!-- 用量日志（趋势+环形图）：紧随今日 tokens -->
     <div class="card" style="margin-bottom:14px">
       <div class="sec-head"><h2 data-i18n="usage_log_title"></h2></div>
@@ -375,8 +375,15 @@ button:disabled{opacity:.5;cursor:not-allowed}
         <input type="text" id="priceSearch" data-i18n-ph="price_search_ph" style="flex:1;min-width:220px" placeholder="">
         <span id="priceMeta" style="opacity:.6;font-size:12px;white-space:nowrap"></span>
       </div>
-      <div style="overflow-x:auto;max-height:calc(100vh - 300px);overflow-y:auto">
-        <table class="utable"><thead id="priceHead"></thead><tbody id="priceList"></tbody></table>
+      <div style="overflow-y:auto;max-height:calc(100vh - 300px)">
+        <style>
+          /* 价格表：fixed 布局下列宽锁定，单元格内容溢出一律截断（防撑出横向滚动条） */
+          #page-prices .utable th{white-space:normal}
+          #page-prices .utable td{overflow:hidden}
+          #page-prices .utable td>div{overflow:hidden;text-overflow:ellipsis}
+          #page-prices .utable td .badge{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+        </style>
+        <table class="utable" style="table-layout:fixed;width:100%"><thead id="priceHead"></thead><tbody id="priceList"></tbody></table>
       </div>
       <div class="hint" data-i18n="price_currency_note"></div>
     </div>

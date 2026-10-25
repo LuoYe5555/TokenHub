@@ -87,6 +87,30 @@ func (t *Table) loadLocked() {
 			Models    map[string]*ModelPrice `json:"models"`
 		}
 		if json.Unmarshal(b, &v) == nil && len(v.Models) > 0 {
+			// 清洗历史负价（OpenRouter 曾以 -1 表示未公开价，×1e6 落盘为负数）
+			for _, p := range v.Models {
+				if p == nil {
+					continue
+				}
+				if p.Input < 0 {
+					p.Input = 0
+				}
+				if p.Output < 0 {
+					p.Output = 0
+				}
+				if p.CacheRead < 0 {
+					p.CacheRead = 0
+				}
+				if p.CacheWrite < 0 {
+					p.CacheWrite = 0
+				}
+				// 老数据 openrouter 条目没有 vendor，从 id 前缀补
+				if p.Vendor == "" && p.Source == "openrouter" {
+					if i := strings.IndexByte(p.ID, '/'); i > 0 {
+						p.Vendor = p.ID[:i]
+					}
+				}
+			}
 			t.prices = v.Models
 			t.updatedAt = v.UpdatedAt
 			if v.Rate > 1 {
@@ -237,15 +261,30 @@ func (t *Table) Rate() float64 {
 func (t *Table) Meta() (updatedAt int64, rate float64, count int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.updatedAt, t.rate, len(t.prices)
+	return t.updatedAt, t.rate, dedupCount(t.prices)
 }
 
-// All 返回全部价格（按厂商+输入价排序，价格页用）。
+// dedupCount 按 ID 去重计数（同一模型存「全 id 键 + 尾段键」两条索引，只算一次）。
+func dedupCount(prices map[string]*ModelPrice) int {
+	seen := map[string]bool{}
+	for _, p := range prices {
+		seen[p.ID] = true
+	}
+	return len(seen)
+}
+
+// All 返回全部价格（去重后按厂商+输入价排序，价格页用）。
+// 同一模型可能以「全 id 键 + 尾段键」两条索引存在，只输出一次。
 func (t *Table) All() []ModelPrice {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	seen := map[string]bool{}
 	out := make([]ModelPrice, 0, len(t.prices))
 	for _, p := range t.prices {
+		if seen[p.ID] {
+			continue
+		}
+		seen[p.ID] = true
 		out = append(out, *p)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -339,12 +378,23 @@ func (t *Table) fetchOpenRouter(ctx context.Context) error {
 		if d.ID == "" || d.Pricing.Prompt == "" {
 			continue
 		}
+		// OpenRouter 用 -1 表示价格未公开/定制，clamp 到 0（占位条目，不参与计价）
+		clamp := func(x float64) float64 {
+			if x < 0 {
+				return 0
+			}
+			return x
+		}
+		vendor := d.ID
+		if i := strings.IndexByte(vendor, '/'); i > 0 {
+			vendor = vendor[:i]
+		}
 		mp := &ModelPrice{
-			ID: d.ID, Name: d.Name, Currency: "USD", Source: "openrouter",
-			Input:      num(d.Pricing.Prompt) * 1e6,
-			Output:     num(d.Pricing.Completion) * 1e6,
-			CacheRead:  num(d.Pricing.InputCacheRead) * 1e6,
-			CacheWrite: num(d.Pricing.InputCacheWrite) * 1e6,
+			ID: d.ID, Name: d.Name, Vendor: vendor, Currency: "USD", Source: "openrouter",
+			Input:      clamp(num(d.Pricing.Prompt) * 1e6),
+			Output:     clamp(num(d.Pricing.Completion) * 1e6),
+			CacheRead:  clamp(num(d.Pricing.InputCacheRead) * 1e6),
+			CacheWrite: clamp(num(d.Pricing.InputCacheWrite) * 1e6),
 		}
 		got[normalize(d.ID)] = mp
 		// 尾段键：z-ai/glm-5.3 → "glm-5-3"（请求侧多半不带厂商前缀）

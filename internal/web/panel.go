@@ -30,6 +30,7 @@ import (
 	"tokenhub/internal/traemigrate"
 	"tokenhub/internal/traeswitch"
 	"tokenhub/internal/tunnel"
+	"tokenhub/internal/updater"
 	"tokenhub/internal/usagelog"
 )
 
@@ -44,6 +45,7 @@ type Panel struct {
 	accel  *accel.Manager
 	ulog   *usagelog.Log
 	prices *pricing.Table
+	upd    *updater.Manager
 
 	mu            sync.Mutex
 	wbStates      map[string]string              // state → realm
@@ -194,6 +196,7 @@ func (p *Panel) Register(mux *http.ServeMux) {
 		})
 	}
 	api("POST /api/panel/import-local/workbuddy", p.handleImportLocalWB)
+	api("POST /api/panel/import/workbuddy-file", p.handleImportWBSwitch)
 	api("POST /api/panel/import-local/trae", p.handleImportLocalTrae)
 	api("POST /api/panel/import-local/zcode", p.handleZcodeImportLocal)
 	api("POST /api/panel/zcode/import-local", p.handleZcodeImportLocal)
@@ -216,6 +219,8 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("GET /api/panel/usage/stats", p.handleUsageStats)
 	api("GET /api/panel/prices", p.handlePricesList)
 	api("POST /api/panel/prices/refresh", p.handlePricesRefresh)
+	api("GET /api/panel/update", p.handleUpdateStatus)
+	api("POST /api/panel/update/check", p.handleUpdateCheck)
 }
 
 // ── 模型价格页 ──
@@ -242,6 +247,43 @@ func (p *Panel) handlePricesRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	up, rate, count := p.prices.Meta()
 	writeJSON(w, map[string]any{"ok": true, "updatedAt": up, "rate": rate, "count": count})
+}
+
+// ── 自动更新 ──
+
+// SetUpdater 注入更新器（main 启动时调用）。
+func (p *Panel) SetUpdater(u *updater.Manager) { p.upd = u }
+
+func (p *Panel) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	st := map[string]any{
+		"version":  config.AppVersion,
+		"commit":   config.GitCommit,
+		"enabled":  p.cfg.AutoUpdate,
+		"upToDate": false,
+	}
+	if p.upd != nil {
+		s := p.upd.Status()
+		st["latest"] = s.Latest
+		st["checkedAt"] = s.CheckedAt
+		st["lastState"] = s.LastState
+		st["lastMsg"] = s.LastMsg
+		st["upToDate"] = s.LastState == "up_to_date"
+	}
+	writeJSON(w, st)
+}
+
+// handleUpdateCheck 手动触发检查；?apply=1 时发现新版本直接下载替换并重启。
+func (p *Panel) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if p.upd == nil {
+		writeErr(w, 500, "更新器未启用")
+		return
+	}
+	apply := r.URL.Query().Get("apply") == "1"
+	st := p.upd.CheckNow(apply)
+	writeJSON(w, map[string]any{
+		"latest": st.Latest, "checkedAt": st.CheckedAt,
+		"lastState": st.LastState, "lastMsg": st.LastMsg,
+	})
 }
 
 // ── 公网分享（隧道） ──

@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"tokenhub/internal/config"
@@ -95,7 +94,7 @@ func (p *Provider) ensureUp(ctx context.Context) error {
 			"本机未安装 Ollama：请到 ollama.com 安装后重试（或在设置中把 Ollama API 地址指向远程主机）")
 	}
 	cmd := exec.Command(exe, "serve")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	hideServeConsole(cmd) // Windows 下 CREATE_NO_WINDOW 防闪黑框（其他平台无操作）
 	if err := cmd.Start(); err != nil {
 		return provider.Err(provider.KindServer, 0, "Ollama 服务拉起失败: %v", err)
 	}

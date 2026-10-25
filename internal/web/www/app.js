@@ -9,11 +9,10 @@ const I18N = {
     price_title: '模型价格', price_sub: '各大模型每百万 tokens 价格（OpenRouter + LLMabacus 双源，每日自动更新；离线用内置国产价兜底）',
     price_search_ph: '搜索模型名 / 厂商…', price_updated: '更新于', price_refresh: '立即更新', price_refreshing: '正在更新…',
     price_count: '个模型', price_col_model: '模型', price_col_vendor: '厂商', price_col_input: '输入',
-    price_col_output: '输出', price_col_cache: '缓存读', price_col_cur: '币种', price_col_src: '来源',
-    price_per_m: '/百万 tokens', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: '内置',
+    price_col_output: '输出', price_col_cache: '缓存读', price_col_src: '来源',
+    price_per_m: '/百万 tokens', price_per_m_s: '/百万', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: '内置',
     price_never: '尚未联网更新', price_refresh_ok: '价格表已更新', price_currency_note: '花费统计按记录时价格折算为人民币存储，$ 显示按当时汇率反算',
     /* 用量花费 */
-    usage_upstream: '上游额度消耗', usage_upstream_tip: '上游额度快照的「已用」合计（按套餐周期累计，含 ZCode/Trae 等客户端直连使用）——与「今日 tokens」（仅网关代理的当日用量）口径不同，两者差异即直连用量+周期累计',
     usage_cost_title: '花费统计', usage_cost_total: '花费总额', usage_cost_range_tip: '按每笔调用落账时的价格快照折算，不受之后调价影响',
     usage_cost_legacy: '历史数据没有价格快照（无法按当时价格回溯计费），花费从本次更新后开始累计',
     usage_title: '用量与占比', usage_sub: '账号额度余量与调用分布（总请求数来自持久台账，全量统计；下方明细为最近 500 条）',
@@ -114,6 +113,19 @@ const I18N = {
     login_zc_s2: '2. 授权完成后本面板会自动获取凭据（最多等 10 分钟）。',
     import_local_desc: '读取本机 ZCode 客户端（~/.zcode/v2/credentials.json）当前登录的账号，解密后导入。适合快速导入已在 ZCode 登录的账号。',
     import_local_ok: '本机导入成功', import_local_none: '未检测到本机登录',
+    import_wbs_btn: '导入 wb-switch 文件',
+    import_wbs_tip: 'wb-switch 是第三方 WorkBuddy 账号切换工具。把它的导出文件（JSON 数组）拖到按钮上或点击选择，按 UID 去重批量导入：已有账号更新凭据，新账号直接新增。',
+    import_wbs_reading: '正在解析文件…',
+    import_wbs_found: '共 {n} 条记录',
+    import_wbs_added: '新增 {a}', import_wbs_updated: '更新 {b}',
+    import_wbs_skipped: '跳过 {c}', import_wbs_invalid: '无效 {d}',
+    import_wbs_confirm: '确认导入', import_wbs_cancel: '取消',
+    import_wbs_done: '导入完成：新增 {a}，更新 {b}，跳过 {c}，无效 {d}',
+    import_wbs_nothing: '没有可导入的记录',
+    import_wbs_until: '到期', import_wbs_expired: '已过期',
+    import_wbs_act_added: '新增', import_wbs_act_updated: '更新',
+    import_wbs_act_skipped: '跳过', import_wbs_act_invalid: '无效',
+    import_wbs_realm_cn: '国内版', import_wbs_realm_intl: '国际版',
     import_wb_decrypting: '正在读取本机会话（国际版需从运行中的客户端找回解密密钥，约 1 分钟，请勿关闭客户端）…',
     import_wb_btn: '从本机 CodeBuddy 导入', import_trae_btn: '从本机 Trae 导入',
     manual_title: '手动导入凭据', manual_provider: '提供商', manual_realm: '渠道（workbuddy: cn/global；zcode: bigmodel/zai）',
@@ -154,6 +166,8 @@ const I18N = {
     set_accel: '网络加速（本地加速器）', set_accel_d: 'PAC 选择性加速：仅 WorkBuddy 国际站、GitHub 等名单域名走本地加速代理（DNS 优选 + 多 IP 连接竞速，只中继不解密不装证书），国内网站与内网全部直连不受影响。已兼容其他加速器：开启前自动备份你的代理/PAC 设置（Watt Toolkit、Clash 等）并串联保留，关闭时一键还原',
     set_pj: '破甲实验（提示词对抗研究）',
     set_reqdump: '请求快照（诊断）', set_reqdump_d: '开启后把客户端发来的原始请求落盘到 data/reqdump（只留最近 8 份），日志会打印每次请求的工具数量与名称。用于诊断「模型说找不到工具」这类客户端侧问题，日常使用保持关闭',
+    set_auto_update: '自动更新', set_auto_update_d: '每 6 小时检查 GitHub 最新 release，发现新版本自动下载替换并重启（构建版本号一致则跳过）',
+    upd_check: '检查更新', upd_checking: '检查中…', upd_cur: '当前版本', upd_latest: '最新', upd_state_up_to_date: '已是最新', upd_state_updated: '已下载更新，即将重启', upd_state_failed: '失败', upd_state_pending_restart: '待重启生效', upd_none: '尚未检查',
     set_pj_d: '默认关闭。开启后仅对本地 Ollama 模型生效：把研究模板套在你的最后一条消息上，测试本地模型安全对齐的健壮性（garak 红队思路）。选「自动」时按模型探测哪个模板有效并记忆（存 data/pj_auto.json）。绝不作用于任何网络提供商。不保证破甲成功——效果因模型而异。',
     set_pj_off: '关闭（默认）',
     set_pj_auto: '自动（按模型探测模板）',
@@ -178,11 +192,10 @@ const I18N = {
     price_title: 'Model Prices', price_sub: 'Per-million-token prices from OpenRouter + LLMabacus (auto-updated daily; builtin CN snapshot as offline fallback)',
     price_search_ph: 'Search model / vendor…', price_updated: 'Updated', price_refresh: 'Refresh now', price_refreshing: 'Refreshing…',
     price_count: 'models', price_col_model: 'Model', price_col_vendor: 'Vendor', price_col_input: 'Input',
-    price_col_output: 'Output', price_col_cache: 'Cache read', price_col_cur: 'Currency', price_col_src: 'Source',
-    price_per_m: '/M tokens', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: 'Builtin',
+    price_col_output: 'Output', price_col_cache: 'Cache read', price_col_src: 'Source',
+    price_per_m: '/M tokens', price_per_m_s: '/M', price_src_or: 'OpenRouter', price_src_ab: 'LLMabacus', price_src_bi: 'Builtin',
     price_never: 'Not updated yet', price_refresh_ok: 'Price table updated', price_currency_note: 'Costs are snapshotted at request time in CNY; $ view converts back at the then-current rate',
     /* Usage cost */
-    usage_upstream: 'Upstream quota used', usage_upstream_tip: 'Sum of upstream quota snapshots "used" (cumulative per plan period, including direct ZCode/Trae client usage) — different scope from "Today tokens" (gateway-proxied usage today only)',
     usage_cost_title: 'Cost stats', usage_cost_total: 'Total cost', usage_cost_range_tip: 'Priced with the rate snapshot taken when each call was logged; later price changes do not affect it',
     usage_cost_legacy: 'Legacy data has no price snapshot (cannot be priced retroactively at historical rates); cost tracking starts from this update',
     usage_title: 'Usage & Quotas', usage_sub: 'Account quota remainder and call distribution (total requests from the persistent ledger, all-time; the list below shows the latest 500 entries)',
@@ -288,6 +301,19 @@ const I18N = {
     login_zc_s2: '2. Credentials are fetched automatically once authorized (up to 10 min).',
     import_local_desc: 'Reads the currently logged-in account of the local ZCode client (~/.zcode/v2/credentials.json), decrypts and imports it.',
     import_local_ok: 'Imported from local client', import_local_none: 'No local login detected',
+    import_wbs_btn: 'Import wb-switch file',
+    import_wbs_tip: 'wb-switch is a third-party WorkBuddy account switcher. Drop its exported JSON array onto the button (or click to pick a file) to bulk-import accounts deduplicated by UID: existing accounts get refreshed credentials, new ones are added.',
+    import_wbs_reading: 'Parsing file…',
+    import_wbs_found: '{n} record(s)',
+    import_wbs_added: '{a} new', import_wbs_updated: '{b} updated',
+    import_wbs_skipped: '{c} skipped', import_wbs_invalid: '{d} invalid',
+    import_wbs_confirm: 'Confirm import', import_wbs_cancel: 'Cancel',
+    import_wbs_done: 'Imported: {a} new, {b} updated, {c} skipped, {d} invalid',
+    import_wbs_nothing: 'Nothing to import',
+    import_wbs_until: 'expires', import_wbs_expired: 'expired',
+    import_wbs_act_added: 'new', import_wbs_act_updated: 'updated',
+    import_wbs_act_skipped: 'skipped', import_wbs_act_invalid: 'invalid',
+    import_wbs_realm_cn: 'CN', import_wbs_realm_intl: 'Intl',
     import_wb_decrypting: 'Reading local sessions (intl edition needs the running client to recover the decryption key, ~1 min — keep the client open)…',
     import_wb_btn: 'Import from local CodeBuddy', import_trae_btn: 'Import from local Trae',
     manual_title: 'Manual import', manual_provider: 'Provider', manual_realm: 'Realm (workbuddy: cn/global; zcode: bigmodel/zai)',
@@ -326,6 +352,8 @@ const I18N = {
     set_accel: 'Network accelerator (local)', set_accel_d: 'Selective PAC acceleration: only listed domains (WorkBuddy international, GitHub, etc.) go through the local accelerator proxy (DNS optimization + racing TCP connections, relay only, no decryption/certificates); domestic sites and intranet stay direct and untouched. Compatible with other accelerators: your existing proxy/PAC settings (Watt Toolkit, Clash, etc.) are backed up and chained, restored on turn-off',
     set_pj: 'Armor-piercing experiment (prompt adversarial research)',
     set_reqdump: 'Request snapshot (diagnostics)', set_reqdump_d: "When enabled, raw client requests are saved to data/reqdump (last 8 kept) and the log prints each request's tool count and names. For diagnosing client-side issues like \"model says it can't find tools\". Keep off for daily use",
+    set_auto_update: 'Auto update', set_auto_update_d: 'Checks GitHub latest release every 6 hours; downloads, swaps and restarts automatically when a new build is found (skipped if build commit matches)',
+    upd_check: 'Check now', upd_checking: 'Checking…', upd_cur: 'Current', upd_latest: 'Latest', upd_state_up_to_date: 'Up to date', upd_state_updated: 'Updated, restarting', upd_state_failed: 'Failed', upd_state_pending_restart: 'Restart to apply', upd_none: 'Not checked yet',
     set_pj_d: 'Off by default. When enabled, applies ONLY to local Ollama models: wraps a research template around your last message to test the robustness of the local model\'s safety alignment (garak-style red teaming). Never applies to any network provider.',
     set_pj_off: 'Off (default)',
     us_saved: 'Saved by token optimization', us_saved_tip: 'Estimated input tokens saved by gateway optimization (JSON compaction + duplicate folding), {n}',
@@ -692,7 +720,8 @@ $$('.nav-item').forEach(item => {
     $('#page-' + item.dataset.page).classList.add('active');
     if (item.dataset.page === 'logs') startLogStream();
     if (item.dataset.page === 'api') renderModels(); // 每次进 API 页都拉最新模型列表
-    if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); }
+    if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); startUsageAuto(); }
+    else stopUsageAuto();
     if (item.dataset.page === 'prices') loadPrices();
   });
 });
@@ -715,19 +744,13 @@ async function loadUsage() {
   let d;
   try { d = await api('/api/panel/usage-summary'); } catch (e) { toast(e.message, true); return; }
   const tks = d.tokens || {};
-  // 上游额度消耗：额度快照「已用」合计（token 单位的账号），口径=套餐周期累计+客户端直连
-  const tokenAccts = (d.accounts || []).filter(x => (x.unit || '').toLowerCase().includes('token'));
-  const upstreamUsed = tokenAccts.reduce((s, x) => s + (x.used || 0), 0);
-  const upDetail = tokenAccts.map(x => `${x.nickname} ${fmtNum(x.used)}${x.unit || ''}`).join('　|　');
   $('#usageCards').innerHTML = `
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_today')}</div>
       <div style="font-size:22px;font-weight:600">${fmtTokens(tks.today)}</div>
       <div style="opacity:.5;font-size:11px">${tks.todayReqs || 0} ${t('usage_req_unit').trim()}${tks.cacheHit ? ' · ' + t('usage_cache_hit') + ' ' + Math.round(tks.cacheHit * 100) + '%' : ''}</div></div>
-    <div class="card" style="flex:1;min-width:150px" title="${esc(t('usage_upstream_tip'))}${upDetail ? '\n' + esc(upDetail) : ''}"><div style="opacity:.6;font-size:12px">${t('usage_upstream')} ⓘ</div>
-      <div style="font-size:22px;font-weight:600">${tokenAccts.length ? fmtNum(upstreamUsed) : '—'}</div>
-      <div style="opacity:.5;font-size:11px">${tokenAccts.length ? fmtTokens(upstreamUsed) + ' tokens · ' + tokenAccts.length + ' ' + t('accounts').toLowerCase() : t('usage_no_quota')}</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_week')}</div>
-      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div></div>
+      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div>
+      <div style="opacity:.5;font-size:11px">&nbsp;</div></div>
     <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
       <div style="font-size:22px;font-weight:600">${fmtNum(tks.allReqs ?? tks.requests ?? 0)}</div>
       <div style="opacity:.5;font-size:11px">${t('usage_tracked')} ${tks.tracked || 0}</div></div>`;
@@ -885,6 +908,22 @@ $('#btnReloadUsage').addEventListener('click', async () => {
     delete btn.dataset.busy;
   }
 });
+
+/* 用量页自动刷新：本地数据（今日 tokens / 用量日志）5 秒一轮，尽量及时。
+   上游额度不自动刷新（计费接口轮询有触发上游风控的风险），仅手动按钮。 */
+let usageAutoTimer = null;
+function stopUsageAuto() {
+  if (usageAutoTimer) { clearInterval(usageAutoTimer); usageAutoTimer = null; }
+}
+function startUsageAuto() {
+  stopUsageAuto();
+  usageAutoTimer = setInterval(async () => {
+    if (document.hidden) return;                       // 页面最小化/后台时暂停
+    const btn = $('#btnReloadUsage');
+    if (btn && btn.dataset.busy) return;               // 手动刷新进行中跳过本轮
+    try { await Promise.all([loadUsage(), loadUsageLog()]); } catch {}
+  }, 5000);
+}
 $('#btnCheckinAll').addEventListener('click', e => withBusy(e.currentTarget, async () => {
   await post('/api/panel/checkin-pass');
   toast(t('checkin_ok'));
@@ -1156,8 +1195,12 @@ function addModalWB() {
     ${steps([t('login_wb_s1'), t('login_wb_s2')])}
     <button class="primary" id="wbGo">${t('open_auth')}</button>
     <div class="hint" id="wbStatus"></div>
-    <button class="sm" id="wbLocal" style="margin-top:10px">📥 ${t('import_wb_btn')}</button>
-    <button class="ghost sm" id="wbManual" style="margin-left:8px">${t('acct_manual')}</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="sm" id="wbLocal">📥 ${t('import_wb_btn')}</button>
+      <button class="ghost sm" id="wbFile" title="${esc(t('import_wbs_tip'))}">📄 ${t('import_wbs_btn')}</button>
+      <button class="ghost sm" id="wbManual">${t('acct_manual')}</button>
+    </div>
+    <div id="wbPreview"></div>
   `);
   $('#wbLocal').addEventListener('click', async () => {
     const btn = $('#wbLocal');
@@ -1195,6 +1238,109 @@ function addModalWB() {
     } catch (e) { $('#wbStatus').textContent = t('login_fail') + ': ' + e.message; }
   });
   $('#wbManual').addEventListener('click', () => manualModal('workbuddy'));
+  bindWBSwitchImport($('#wbFile'), $('#wbPreview'), $('#wbStatus'));
+}
+
+/* ── wb-switch 导出文件导入 ──
+   第三方工具 wb-switch 导出的账号 JSON（顶层裸数组，snake_case 字段）。
+   选文件/拖拽 → 后端 dryRun 预演（不落盘）→ 展示逐条清单 → 确认后正式写入。 */
+function bindWBSwitchImport(btn, preview, status) {
+  if (!btn || !preview) return;
+  btn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      if (f) readWBSwitchFile(f, preview, status);
+    });
+    input.click();
+  });
+  btn.addEventListener('dragover', e => { e.preventDefault(); btn.style.borderColor = 'var(--accent)'; });
+  btn.addEventListener('dragleave', () => { btn.style.borderColor = ''; });
+  btn.addEventListener('drop', e => {
+    e.preventDefault();
+    btn.style.borderColor = '';
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) readWBSwitchFile(f, preview, status);
+  });
+}
+
+async function readWBSwitchFile(file, preview, status) {
+  preview.innerHTML = '';
+  status.textContent = t('import_wbs_reading');
+  let text;
+  try { text = await file.text(); } catch (e) { status.textContent = e.message; return; }
+  try {
+    const rep = await post('/api/panel/import/workbuddy-file', { data: text, dryRun: true });
+    status.textContent = '';
+    renderWBSwitchPreview(rep, text, preview, status);
+  } catch (e) { status.textContent = e.message; }
+}
+
+function renderWBSwitchPreview(rep, text, preview, status) {
+  const items = rep.items || [];
+  const n = k => rep[k] || 0;
+  const summary = [
+    t('import_wbs_added').replace('{a}', n('added')),
+    t('import_wbs_updated').replace('{b}', n('updated')),
+    t('import_wbs_skipped').replace('{c}', n('skipped')),
+    t('import_wbs_invalid').replace('{d}', n('invalid')),
+  ].join(' · ');
+  const colorOf = { added: 'var(--green)', updated: 'var(--accent)', skipped: 'var(--muted)', invalid: 'var(--red)' };
+  const labelOf = {
+    added: t('import_wbs_act_added'), updated: t('import_wbs_act_updated'),
+    skipped: t('import_wbs_act_skipped'), invalid: t('import_wbs_act_invalid'),
+  };
+  const rows = items.map(it => {
+    const name = esc(it.nickname || it.uid || '—');
+    const realm = it.realm === 'global' ? t('import_wbs_realm_intl') : (it.realm === 'cn' ? t('import_wbs_realm_cn') : '');
+    const expired = it.expiresAt && it.expiresAt * 1000 < Date.now();
+    const exp = it.expiresAt
+      ? `${t('import_wbs_until')} ${new Date(it.expiresAt * 1000).toLocaleDateString()}${expired ? ' · ' + t('import_wbs_expired') : ''}`
+      : '';
+    const reason = it.reason ? `<div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(it.reason)}</div>` : '';
+    const warns = (it.warnings || []).map(w => `<div style="color:var(--amber);font-size:11px;margin-top:2px">⚠ ${esc(w)}</div>`).join('');
+    return `<div style="padding:6px 10px;border-top:1px solid var(--border)">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <b style="color:${colorOf[it.action] || 'var(--text)'};font-size:12px">${labelOf[it.action] || esc(it.action)}</b>
+        <span>${name}</span>
+        <span style="color:var(--muted);font-size:11px">${esc(realm)}</span>
+        <span style="color:${expired ? 'var(--red)' : 'var(--muted)'};font-size:11px;margin-left:auto">${esc(exp)}</span>
+      </div>${reason}${warns}
+    </div>`;
+  }).join('');
+
+  preview.innerHTML = `
+    <div style="margin-top:12px;border:1px solid var(--border);border-radius:9px;background:var(--card);overflow:hidden">
+      <div style="padding:8px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+        <b>${t('import_wbs_found').replace('{n}', rep.found || items.length)}</b>
+        <span style="color:var(--muted)">${summary}</span>
+      </div>
+      <div style="max-height:190px;overflow:auto">${rows}</div>
+      <div style="padding:8px 10px;display:flex;gap:8px;border-top:1px solid var(--border)">
+        <button class="primary sm" id="wbsGo" ${(n('added') + n('updated')) > 0 ? '' : 'disabled'}>${t('import_wbs_confirm')}</button>
+        <button class="ghost sm" id="wbsCancel">${t('import_wbs_cancel')}</button>
+      </div>
+    </div>`;
+
+  $('#wbsCancel').addEventListener('click', () => { preview.innerHTML = ''; });
+  $('#wbsGo').addEventListener('click', async () => {
+    const go = $('#wbsGo');
+    go.disabled = true;
+    try {
+      const r = await post('/api/panel/import/workbuddy-file', { data: text, dryRun: false });
+      preview.innerHTML = '';
+      status.textContent = t('import_wbs_done')
+        .replace('{a}', r.added || 0).replace('{b}', r.updated || 0)
+        .replace('{c}', r.skipped || 0).replace('{d}', r.invalid || 0);
+      toast(status.textContent);
+      loadOverview();
+    } catch (e) {
+      status.textContent = e.message;
+      go.disabled = false;
+    }
+  });
 }
 
 /* Trae */
@@ -1526,6 +1672,8 @@ function renderSettings() {
     settingRow(t('set_opt_dedup'), t('set_opt_dedup_d'), `<label class="switch"><input type="checkbox" id="sOptDedup" ${(c.optDedup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_opt_neardup'), t('set_opt_neardup_d'), `<label class="switch"><input type="checkbox" id="sOptNearDup" ${(c.optNearDup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_accel'), t('set_accel_d'), `<label class="switch"><input type="checkbox" id="sAccel" ${c.accel ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_auto_update'), t('set_auto_update_d'), `<label class="switch"><input type="checkbox" id="sAutoUpdate" ${c.autoUpdate !== false ? 'checked' : ''}><i></i></label>`),
+    settingRow(`${t('upd_cur')} <span class="badge" style="font-family:var(--mono)" id="updVer"></span>`, `<span id="updStat">${t('upd_none')}</span>`, `<button class="sm" id="btnUpdateCheck">${t('upd_check')}</button>`),
     settingRow(t('set_reqdump'), t('set_reqdump_d'), `<label class="switch"><input type="checkbox" id="sReqDump" ${c.reqDump ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_pj'), t('set_pj_d'), `<select id="sPJ">${['off', 'auto', '3_liner', 'antigpt', 'betterdan', 'aim'].map(v => `<option value="${v}" ${(c.pjMode || 'off') === v ? 'selected' : ''}>${v === 'off' ? t('set_pj_off') : (v === 'auto' ? t('set_pj_auto') : v)}</option>`).join('')}</select>`),
   ].join('');
@@ -1534,7 +1682,46 @@ function renderSettings() {
     crypto.getRandomValues(bytes);
     $('#sKey').value = 'sk-th-' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   });
+  loadUpdateStatus(false);
 }
+
+// updStateText 把更新器 lastState 映射为面板文案
+function updStateText(s, latest) {
+  switch (s) {
+    case 'up_to_date': return t('upd_state_up_to_date') + (latest ? ` · ${t('upd_latest')} ${esc(latest)}` : '');
+    case 'updated': case 'pending_restart': return t('upd_state_pending_restart') + (latest ? ` · ${esc(latest)}` : '');
+    case 'failed': return t('upd_state_failed');
+    default: return t('upd_none');
+  }
+}
+
+async function loadUpdateStatus(apply) {
+  const badge = $('#updVer'), stat = $('#updStat');
+  try {
+    const d = apply
+      ? await post('/api/panel/update/check?apply=1')
+      : await api('/api/panel/update');
+    if (badge) badge.textContent = d.commit || 'dev';
+    if (stat) {
+      const s = apply ? d : { lastState: d.lastState, latest: d.latest, lastMsg: d.lastMsg };
+      stat.textContent = updStateText(s.lastState, s.latest) + (s.lastState === 'failed' && s.lastMsg ? ` · ${s.lastMsg}` : '');
+    }
+  } catch (e) {
+    if (stat) stat.textContent = e.message;
+  }
+}
+
+// 「检查更新」按钮在 renderSettings 动态生成，用事件委托绑定
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#btnUpdateCheck');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = t('upd_checking');
+  loadUpdateStatus(true).finally(() => {
+    btn.disabled = false;
+    btn.textContent = t('upd_check');
+  });
+});
 
 $('#btnSaveSettings').addEventListener('click', async () => {
   const body = {
@@ -1556,6 +1743,7 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     optNearDup: $('#sOptNearDup').checked,
     pjMode: $('#sPJ').value,
     reqDump: $('#sReqDump').checked,
+    autoUpdate: $('#sAutoUpdate').checked,
   };
   try {
     await post('/api/panel/config', body);
@@ -1959,26 +2147,27 @@ function renderPricesTable() {
   const tb = $('#priceList');
   if (!tb || !priceCache) return;
   const head = $('#priceHead');
-  if (head) head.innerHTML = `<tr>
-    <th>${t('price_col_model')}</th><th>${t('price_col_vendor')}</th>
-    <th style="text-align:right">${t('price_col_input')}<span style="opacity:.6">${t('price_per_m')}</span></th>
-    <th style="text-align:right">${t('price_col_output')}</th>
-    <th style="text-align:right">${t('price_col_cache')}</th>
-    <th>${t('price_col_cur')}</th><th>${t('price_col_src')}</th></tr>`;
+  if (head) head.innerHTML = `<tr style="text-align:right">
+    <th style="text-align:left;width:38%">${t('price_col_model')}</th><th style="text-align:left;width:13%">${t('price_col_vendor')}</th>
+    <th style="width:14%">${t('price_col_input')}<span style="opacity:.6">${t('price_per_m_s')}</span></th>
+    <th style="width:13%">${t('price_col_output')}<span style="opacity:.6">${t('price_per_m_s')}</span></th>
+    <th style="width:11%">${t('price_col_cache')}</th>
+    <th style="width:11%">${t('price_col_src')}</th></tr>`;
   const q = ($('#priceSearch')?.value || '').trim().toLowerCase();
   const all = priceCache.models || [];
   const list = q ? all.filter(m =>
     (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q) || (m.vendor || '').toLowerCase().includes(q)
   ) : all;
+  const curSym = c => c === 'USD' ? '<span style="opacity:.55">$</span>' : c === 'CNY' ? '<span style="opacity:.55">¥</span>' : '';
   tb.innerHTML = list.length ? list.map(m => `<tr>
-      <td style="font-family:var(--mono)">${esc(m.id)}${m.name && m.name !== m.id ? `<span style="opacity:.55"> · ${esc(m.name)}</span>` : ''}</td>
-      <td>${esc(m.vendor || '—')}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.input)}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.output)}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.cacheRead)}</td>
-      <td>${esc(m.currency || '')}</td>
-      <td><span class="badge">${esc(priceSrcLabel(m.source))}</span></td>
-    </tr>`).join('') : `<tr><td colspan="7" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
+      <td><div style="font-family:var(--mono);font-weight:600">${esc(m.id)}</div>
+        ${m.name && m.name !== m.id ? `<div style="opacity:.55;font-size:11px;margin-top:1px">${esc(m.name)}</div>` : ''}</td>
+      <td>${m.vendor ? `<span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle">${esc(m.vendor)}</span>` : '<span style="opacity:.4">—</span>'}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.input)} ${curSym(m.currency)}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.output)} ${curSym(m.currency)}</td>
+      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.cacheRead)} ${curSym(m.currency)}</td>
+      <td style="text-align:center"><span class="badge">${esc(priceSrcLabel(m.source))}</span></td>
+    </tr>`).join('') : `<tr><td colspan="6" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
 }
 
 $('#priceSearch')?.addEventListener('input', (() => {

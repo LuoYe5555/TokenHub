@@ -31,7 +31,18 @@ jobs:
         shell: pwsh
         run: |
           go vet ./...
-          go build -ldflags "-s -w -H windowsgui" -o TokenHub.exe .
+          # 注入 commit 短哈希：自动更新用它与 release tag 比对（缺了会按 dev 构建跳过自更新）
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          go build -ldflags "-s -w -H windowsgui -X tokenhub/internal/config.GitCommit=$sha" -o TokenHub.exe .
+
+      - name: Build TokenHub-linux-amd64
+        shell: pwsh
+        run: |
+          $env:GOOS = "linux"
+          $env:GOARCH = "amd64"
+          $env:CGO_ENABLED = "0"
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          go build -trimpath -ldflags "-s -w -X tokenhub/internal/config.GitCommit=$sha" -o TokenHub-linux-amd64 .
 
       - name: Prepare tag name from commit message
         id: tag
@@ -87,6 +98,13 @@ jobs:
           fi
 
           cp TokenHub.exe dist/
+          if [ -f TokenHub-linux-amd64 ]; then
+            cp TokenHub-linux-amd64 dist/
+            # 部署包：二进制 + start.sh（自动 chmod+启动）+ README-LINUX.txt
+            tar -czf dist/TokenHub-linux-amd64.tar.gz TokenHub-linux-amd64 -C scripts/linux-bundle start.sh README-LINUX.txt
+          else
+            echo "TokenHub-linux-amd64 not found (non-fatal)."
+          fi
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
