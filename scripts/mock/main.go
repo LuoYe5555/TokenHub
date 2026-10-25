@@ -1,7 +1,8 @@
 // mock 三家上游服务，用于 TokenHub 本地联调（不访问真实上游）。
-//   19001: WorkBuddy (OpenAI 风格)
-//   19002: Trae SOLO
-//   19003: ZCode (Anthropic 风格) + BigModel
+//
+//	19001: WorkBuddy (OpenAI 风格)
+//	19002: Trae SOLO
+//	19003: ZCode (Anthropic 风格) + BigModel
 package main
 
 import (

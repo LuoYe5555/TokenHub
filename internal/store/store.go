@@ -87,11 +87,11 @@ const (
 	ExtraTraeEntEnvelope    = "traeEntEnv"    // iCubeEntitlementInfo://icube.cloudide
 	ExtraTraeServerEnvelope = "traeServerEnv" // iCubeServerData://icube.cloudide
 	// wb-switch 导出文件导入时保留的元数据（仅展示/诊断，不参与鉴权）
-	ExtraWBSessionState      = "wbSessionState" // auth_raw.sessionState，用于登出/失效检测
-	ExtraWBRefreshExpiresAt  = "wbRefreshExpiresAt" // refresh_token 过期时刻（unix 秒）
-	ExtraWBImportSource      = "wbImportSource"     // 来源标记：wb-switch / manual / local
-	ExtraWBPhone             = "wbPhone"            // profile_raw.phoneNumber
-	ExtraWBUin               = "wbUin"              // profile_raw.uin
+	ExtraWBSessionState     = "wbSessionState"     // auth_raw.sessionState，用于登出/失效检测
+	ExtraWBRefreshExpiresAt = "wbRefreshExpiresAt" // refresh_token 过期时刻（unix 秒）
+	ExtraWBImportSource     = "wbImportSource"     // 来源标记：wb-switch / manual / local
+	ExtraWBPhone            = "wbPhone"            // profile_raw.phoneNumber
+	ExtraWBUin              = "wbUin"              // profile_raw.uin
 	ExtraZCodeDeviceMid     = "deviceMid"
 	ExtraZCodeCredentials   = "credentials" // 原始 credentials.json 内容（多为 enc:v1 密文）
 	ExtraZCodeLoginProvider = "loginProvider"
