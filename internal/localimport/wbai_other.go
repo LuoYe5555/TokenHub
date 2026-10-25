@@ -1,21 +1,8 @@
 //go:build !windows
 
-// 非 Windows 平台的占位实现（TokenHub 实际只跑 Windows）。
+// 非 Windows 平台：没有「从运行中的客户端进程内存取回解密密钥」的能力，
+// 因此加密会话无法解密；明文会话仍可正常读取（见 wbai_common.go）。
 package localimport
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
-func wbAsEncrypted(raw json.RawMessage) (wbEncryptedField, bool) { return wbEncryptedField{}, false }
-func wbDecodeEnvelope(b64 string) (wbEnvelopeEnvelope, error) {
-	return wbEnvelopeEnvelope{}, fmt.Errorf("unsupported")
-}
-func wbPlainString(raw json.RawMessage) string { return "" }
-func wbPlainInt(raw json.RawMessage) int64     { return 0 }
-func wbFieldString(raw json.RawMessage, keys map[string][]byte) (string, bool) {
-	return "", false
-}
-func wbFieldStringOr(raw json.RawMessage, keys map[string][]byte, def string) string { return def }
-func wbScanProtectorKeys(want []string) map[string][]byte                            { return nil }
+// wbScanProtectorKeys 非 Windows 平台无法从进程内存找回密钥，返回空表。
+func wbScanProtectorKeys(want []string) map[string][]byte { return nil }
