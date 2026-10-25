@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"tokenhub/internal/config"
@@ -23,6 +22,7 @@ import (
 	"tokenhub/internal/logx"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/store"
+	"tokenhub/internal/winproc"
 )
 
 const defaultBase = "http://127.0.0.1:11434"
@@ -94,8 +94,7 @@ func (p *Provider) ensureUp(ctx context.Context) error {
 		return provider.Err(provider.KindServer, 0,
 			"本机未安装 Ollama：请到 ollama.com 安装后重试（或在设置中把 Ollama API 地址指向远程主机）")
 	}
-	cmd := exec.Command(exe, "serve")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	cmd := winproc.Cmd(exe, "serve") // Windows 下隐藏控制台窗口，其它平台透传
 	if err := cmd.Start(); err != nil {
 		return provider.Err(provider.KindServer, 0, "Ollama 服务拉起失败: %v", err)
 	}

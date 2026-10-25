@@ -1,20 +1,15 @@
 //go:build windows
 
-// WorkBuddy 国际版会话解密：新版客户端把 auth .info 文件里的 accessToken/refreshToken
-// 加密成 {"$wbEncrypted":1,"envelope":"..."} 信封（AES-256-GCM，suite 1，sym-v1 field framing）。
+// WorkBuddy 国际版会话解密（仅 Windows 可用的部分）：
 // 密钥不在磁盘明文存放（keyblob 里也被包裹），但主进程运行时内存中持有原始 32 字节密钥，
 // 且 keyId = sha256(key) 前16位 → 用签名扫描即可从运行中的客户端安全取回（仅读自身登录态）。
+// 信封的解析与解密是纯 Go 的 crypto，已移到 wbai_common.go 供各平台共用。
 package localimport
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -22,93 +17,6 @@ import (
 	"syscall"
 	"unsafe"
 )
-
-const wbFieldFramingMagic = "WBEV1" // field 级信封的 framing 标记
-
-// wbEnvelopeEnvelope .info 里 envelope 字段解 base64 后的 JSON
-type wbEnvelopeEnvelope struct {
-	Suite      int    `json:"suite"`
-	KeyID      string `json:"keyId"`
-	Nonce      string `json:"nonce"`
-	AuthTag    string `json:"authTag"`
-	Ciphertext string `json:"ciphertext"`
-}
-
-// wbEncryptedField .info 字段值可能出现的加密包装
-type wbEncryptedField struct {
-	WBEncrypted int    `json:"$wbEncrypted"`
-	Envelope    string `json:"envelope"`
-}
-
-// wbAAD 复刻 buildAuthenticatedContextAad 的 sym-v1 分支：
-// "WB-AAD\0" || 0x01 || lenp(framingMagic) || lenp("sym-v1") || uint32BE(suite)
-// || lenp(keyId) || [framing枚举] || 0x00(seq缺省) || 0x00(final缺省)
-func wbAAD(keyID string, suite int) []byte {
-	lenp := func(b string) []byte {
-		out := make([]byte, 4, 4+len(b))
-		binary.BigEndian.PutUint32(out, uint32(len(b)))
-		return append(out, b...)
-	}
-	aad := []byte("WB-AAD\x00")
-	aad = append(aad, 0x01)
-	aad = append(aad, lenp(wbFieldFramingMagic)...)
-	aad = append(aad, lenp("sym-v1")...)
-	var s [4]byte
-	binary.BigEndian.PutUint32(s[:], uint32(suite))
-	aad = append(aad, s[:]...)
-	aad = append(aad, lenp(keyID)...)
-	aad = append(aad, 0x02) // framing 枚举 field=2
-	aad = append(aad, 0x00, 0x00)
-	return aad
-}
-
-// wbOpenEnvelope 用 key32 解一个 field 信封，返回明文字节。
-func wbOpenEnvelope(key []byte, envRaw string) ([]byte, error) {
-	inner, err := base64Decode(envRaw)
-	if err != nil {
-		return nil, fmt.Errorf("envelope base64: %w", err)
-	}
-	var env wbEnvelopeEnvelope
-	if err := json.Unmarshal(inner, &env); err != nil {
-		return nil, fmt.Errorf("envelope json: %w", err)
-	}
-	nonce, err := base64Decode(env.Nonce)
-	if err != nil || len(nonce) != 12 {
-		return nil, fmt.Errorf("nonce 非法")
-	}
-	tag, err := base64Decode(env.AuthTag)
-	if err != nil || len(tag) != 16 {
-		return nil, fmt.Errorf("authTag 非法")
-	}
-	ct, err := base64Decode(env.Ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("ciphertext base64: %w", err)
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	plain, err := gcm.Open(nil, nonce, append(ct, tag...), wbAAD(env.KeyID, env.Suite))
-	if err != nil {
-		return nil, fmt.Errorf("GCM open: %w", err)
-	}
-	return plain, nil
-}
-
-func base64Decode(s string) ([]byte, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, fmt.Errorf("empty base64")
-	}
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return b, nil
-	}
-	return base64.RawStdEncoding.DecodeString(strings.TrimRight(s, "="))
-}
 
 // wbCollectKeyIDs 从 .info 文件收集所有加密信封的 keyId + 原始字段。
 type wbEncRef struct {
@@ -357,78 +265,4 @@ func keysOf(m map[string]bool) []string {
 		}
 	}
 	return out
-}
-
-// ── 字段解析助手（明文/信封双形态） ──
-
-func wbAsEncrypted(raw json.RawMessage) (wbEncryptedField, bool) {
-	var f wbEncryptedField
-	if len(raw) == 0 || raw[0] != '{' {
-		return f, false
-	}
-	if json.Unmarshal(raw, &f) != nil {
-		return f, false
-	}
-	return f, f.WBEncrypted == 1 && f.Envelope != ""
-}
-
-func wbDecodeEnvelope(b64 string) (wbEnvelopeEnvelope, error) {
-	inner, err := base64Decode(b64)
-	if err != nil {
-		return wbEnvelopeEnvelope{}, err
-	}
-	var env wbEnvelopeEnvelope
-	err = json.Unmarshal(inner, &env)
-	return env, err
-}
-
-func wbPlainString(raw json.RawMessage) string {
-	var s string
-	if json.Unmarshal(raw, &s) != nil {
-		return ""
-	}
-	return strings.TrimSpace(s)
-}
-
-func wbPlainInt(raw json.RawMessage) int64 {
-	var n int64
-	if json.Unmarshal(raw, &n) != nil {
-		return 0
-	}
-	return n
-}
-
-// wbFieldString 把 auth/account 字段还原成字符串：明文直接返回；
-// 加密信封用扫描到的密钥解密。第二个返回值表示该字段是否成功取得。
-func wbFieldString(raw json.RawMessage, keys map[string][]byte) (string, bool) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return "", false
-	}
-	if raw[0] == '"' {
-		return wbPlainString(raw), true
-	}
-	f, ok := wbAsEncrypted(raw)
-	if !ok {
-		return "", false
-	}
-	env, err := wbDecodeEnvelope(f.Envelope)
-	if err != nil {
-		return "", false
-	}
-	key := keys[env.KeyID]
-	if key == nil {
-		return "", false
-	}
-	plain, err := wbOpenEnvelope(key, f.Envelope)
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(string(plain)), true
-}
-
-func wbFieldStringOr(raw json.RawMessage, keys map[string][]byte, def string) string {
-	if s, ok := wbFieldString(raw, keys); ok {
-		return s
-	}
-	return def
 }

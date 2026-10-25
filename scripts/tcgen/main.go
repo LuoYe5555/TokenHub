@@ -48,7 +48,7 @@ func main() {
 	raw := append(append(append([]byte{}, header...), salt...), out...)
 	b64 := base64.StdEncoding.EncodeToString(raw)
 	storage := map[string]any{
-		"iCubeAuthInfo://icube.cloudide": b64,
+		"iCubeAuthInfo://icube.cloudide":            b64,
 		"iCubeAuthInfo://icube-dc:3049374157909753": "1",
 	}
 	st, _ := json.MarshalIndent(storage, "", "  ")

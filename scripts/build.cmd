@@ -1,5 +1,5 @@
 @echo off
-rem TokenHub 构建脚本（需要 Go 1.22+，PATH 里有 go）
+rem TokenHub 构建脚本（需要 Go 1.27+，PATH 里有 go）
 setlocal
 cd /d "%~dp0.."
 
