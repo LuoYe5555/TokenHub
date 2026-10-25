@@ -4,7 +4,7 @@
 
 > ⚠️ **仅限个人自用，请勿贩卖或商用。** 凭据只保存在本机。
 
-单文件 `TokenHub.exe`（Go 编写，无外部依赖），双击即用：
+单文件 `TokenHub.exe`（Go 编写，无外部依赖），双击即用。可执行文件从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载，或自行[从源码构建](#从源码构建)（仓库不存放构建产物）：
 
 - **Web 面板**：多账号管理、额度查看、用量日志、中英双语
 - **多账号池**：同一家可挂多个账号自动轮换；额度耗尽 / 限流 / 凭据失效自动冷却切换
@@ -62,6 +62,8 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 ```
 scripts\build.cmd        （需要 Go 1.22+，产物 TokenHub.exe）
 ```
+
+构建产物（`TokenHub.exe`、`scripts\mock\mock.exe`）不入库，`.gitignore` 已排除；需要可执行文件请自行构建，或从 [Releases](https://github.com/LuoYe5555/TokenHub/releases) 下载。
 
 ## 许可证
 
