@@ -116,6 +116,20 @@ const I18N = {
     import_local_ok: '本机导入成功', import_local_none: '未检测到本机登录',
     import_wb_decrypting: '正在读取本机会话（国际版需从运行中的客户端找回解密密钥，约 1 分钟，请勿关闭客户端）…',
     import_wb_btn: '从本机 CodeBuddy 导入', import_trae_btn: '从本机 Trae 导入',
+    /* wb-switch 文件导入 */
+    import_wbs_btn: '导入 wb-switch 文件',
+    import_wbs_tip: 'wb-switch 是第三方 WorkBuddy 账号切换工具。把它的导出文件（JSON 数组）拖到按钮上或点击选择，按 UID 去重批量导入：已有账号更新凭据，新账号直接新增。',
+    import_wbs_reading: '正在解析文件…',
+    import_wbs_found: '共 {n} 条记录',
+    import_wbs_added: '新增 {a}', import_wbs_updated: '更新 {b}',
+    import_wbs_skipped: '跳过 {c}', import_wbs_invalid: '无效 {d}',
+    import_wbs_confirm: '确认导入', import_wbs_cancel: '取消',
+    import_wbs_done: '导入完成：新增 {a}，更新 {b}，跳过 {c}，无效 {d}',
+    import_wbs_nothing: '没有可导入的记录',
+    import_wbs_until: '到期', import_wbs_expired: '已过期',
+    import_wbs_act_added: '新增', import_wbs_act_updated: '更新',
+    import_wbs_act_skipped: '跳过', import_wbs_act_invalid: '无效',
+    import_wbs_realm_cn: '国内版', import_wbs_realm_intl: '国际版',
     manual_title: '手动导入凭据', manual_provider: '提供商', manual_realm: '渠道（workbuddy: cn/global；zcode: bigmodel/zai）',
     manual_access: 'AccessToken（ZCode 填 zcode JWT）', manual_refresh: 'RefreshToken（可选，trae/workbuddy 可自动续期）',
     manual_uid: 'UID（可选）', manual_nick: '备注名（可选）',
@@ -290,6 +304,20 @@ const I18N = {
     import_local_ok: 'Imported from local client', import_local_none: 'No local login detected',
     import_wb_decrypting: 'Reading local sessions (intl edition needs the running client to recover the decryption key, ~1 min — keep the client open)…',
     import_wb_btn: 'Import from local CodeBuddy', import_trae_btn: 'Import from local Trae',
+    /* wb-switch file import */
+    import_wbs_btn: 'Import wb-switch file',
+    import_wbs_tip: 'wb-switch is a third-party WorkBuddy account switcher. Drop its exported JSON array onto the button (or click to pick a file) to bulk-import accounts deduplicated by UID: existing accounts get refreshed credentials, new ones are added.',
+    import_wbs_reading: 'Parsing file…',
+    import_wbs_found: '{n} record(s)',
+    import_wbs_added: '{a} new', import_wbs_updated: '{b} updated',
+    import_wbs_skipped: '{c} skipped', import_wbs_invalid: '{d} invalid',
+    import_wbs_confirm: 'Confirm import', import_wbs_cancel: 'Cancel',
+    import_wbs_done: 'Imported: {a} new, {b} updated, {c} skipped, {d} invalid',
+    import_wbs_nothing: 'Nothing to import',
+    import_wbs_until: 'expires', import_wbs_expired: 'expired',
+    import_wbs_act_added: 'new', import_wbs_act_updated: 'updated',
+    import_wbs_act_skipped: 'skipped', import_wbs_act_invalid: 'invalid',
+    import_wbs_realm_cn: 'CN', import_wbs_realm_intl: 'Intl',
     manual_title: 'Manual import', manual_provider: 'Provider', manual_realm: 'Realm (workbuddy: cn/global; zcode: bigmodel/zai)',
     manual_access: 'AccessToken (ZCode: zcode JWT)', manual_refresh: 'RefreshToken (optional; trae/workbuddy auto-renew)',
     manual_uid: 'UID (optional)', manual_nick: 'Display name (optional)',
@@ -1156,8 +1184,12 @@ function addModalWB() {
     ${steps([t('login_wb_s1'), t('login_wb_s2')])}
     <button class="primary" id="wbGo">${t('open_auth')}</button>
     <div class="hint" id="wbStatus"></div>
-    <button class="sm" id="wbLocal" style="margin-top:10px">📥 ${t('import_wb_btn')}</button>
-    <button class="ghost sm" id="wbManual" style="margin-left:8px">${t('acct_manual')}</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="sm" id="wbLocal">📥 ${t('import_wb_btn')}</button>
+      <button class="ghost sm" id="wbFile" title="${esc(t('import_wbs_tip'))}">📄 ${t('import_wbs_btn')}</button>
+      <button class="ghost sm" id="wbManual">${t('acct_manual')}</button>
+    </div>
+    <div id="wbPreview"></div>
   `);
   $('#wbLocal').addEventListener('click', async () => {
     const btn = $('#wbLocal');
@@ -1195,6 +1227,109 @@ function addModalWB() {
     } catch (e) { $('#wbStatus').textContent = t('login_fail') + ': ' + e.message; }
   });
   $('#wbManual').addEventListener('click', () => manualModal('workbuddy'));
+  bindWBSwitchImport($('#wbFile'), $('#wbPreview'), $('#wbStatus'));
+}
+
+/* ── wb-switch 导出文件导入 ──
+   第三方工具 wb-switch 导出的账号 JSON（顶层裸数组，snake_case 字段）。
+   选文件/拖拽 → 后端 dryRun 预演（不落盘）→ 展示逐条清单 → 确认后正式写入。 */
+function bindWBSwitchImport(btn, preview, status) {
+  if (!btn || !preview) return;
+  btn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      if (f) readWBSwitchFile(f, preview, status);
+    });
+    input.click();
+  });
+  btn.addEventListener('dragover', e => { e.preventDefault(); btn.style.borderColor = 'var(--accent)'; });
+  btn.addEventListener('dragleave', () => { btn.style.borderColor = ''; });
+  btn.addEventListener('drop', e => {
+    e.preventDefault();
+    btn.style.borderColor = '';
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) readWBSwitchFile(f, preview, status);
+  });
+}
+
+async function readWBSwitchFile(file, preview, status) {
+  preview.innerHTML = '';
+  status.textContent = t('import_wbs_reading');
+  let text;
+  try { text = await file.text(); } catch (e) { status.textContent = e.message; return; }
+  try {
+    const rep = await post('/api/panel/import/workbuddy-file', { data: text, dryRun: true });
+    status.textContent = '';
+    renderWBSwitchPreview(rep, text, preview, status);
+  } catch (e) { status.textContent = e.message; }
+}
+
+function renderWBSwitchPreview(rep, text, preview, status) {
+  const items = rep.items || [];
+  const n = k => rep[k] || 0;
+  const summary = [
+    t('import_wbs_added').replace('{a}', n('added')),
+    t('import_wbs_updated').replace('{b}', n('updated')),
+    t('import_wbs_skipped').replace('{c}', n('skipped')),
+    t('import_wbs_invalid').replace('{d}', n('invalid')),
+  ].join(' · ');
+  const colorOf = { added: 'var(--green)', updated: 'var(--accent)', skipped: 'var(--muted)', invalid: 'var(--red)' };
+  const labelOf = {
+    added: t('import_wbs_act_added'), updated: t('import_wbs_act_updated'),
+    skipped: t('import_wbs_act_skipped'), invalid: t('import_wbs_act_invalid'),
+  };
+  const rows = items.map(it => {
+    const name = esc(it.nickname || it.uid || '—');
+    const realm = it.realm === 'global' ? t('import_wbs_realm_intl') : (it.realm === 'cn' ? t('import_wbs_realm_cn') : '');
+    const expired = it.expiresAt && it.expiresAt * 1000 < Date.now();
+    const exp = it.expiresAt
+      ? `${t('import_wbs_until')} ${new Date(it.expiresAt * 1000).toLocaleDateString()}${expired ? ' · ' + t('import_wbs_expired') : ''}`
+      : '';
+    const reason = it.reason ? `<div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(it.reason)}</div>` : '';
+    const warns = (it.warnings || []).map(w => `<div style="color:var(--amber);font-size:11px;margin-top:2px">⚠ ${esc(w)}</div>`).join('');
+    return `<div style="padding:6px 10px;border-top:1px solid var(--border)">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <b style="color:${colorOf[it.action] || 'var(--text)'};font-size:12px">${labelOf[it.action] || esc(it.action)}</b>
+        <span>${name}</span>
+        <span style="color:var(--muted);font-size:11px">${esc(realm)}</span>
+        <span style="color:${expired ? 'var(--red)' : 'var(--muted)'};font-size:11px;margin-left:auto">${esc(exp)}</span>
+      </div>${reason}${warns}
+    </div>`;
+  }).join('');
+
+  preview.innerHTML = `
+    <div style="margin-top:12px;border:1px solid var(--border);border-radius:9px;background:var(--card);overflow:hidden">
+      <div style="padding:8px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+        <b>${t('import_wbs_found').replace('{n}', rep.found || items.length)}</b>
+        <span style="color:var(--muted)">${summary}</span>
+      </div>
+      <div style="max-height:190px;overflow:auto">${rows}</div>
+      <div style="padding:8px 10px;display:flex;gap:8px;border-top:1px solid var(--border)">
+        <button class="primary sm" id="wbsGo" ${(n('added') + n('updated')) > 0 ? '' : 'disabled'}>${t('import_wbs_confirm')}</button>
+        <button class="ghost sm" id="wbsCancel">${t('import_wbs_cancel')}</button>
+      </div>
+    </div>`;
+
+  $('#wbsCancel').addEventListener('click', () => { preview.innerHTML = ''; });
+  $('#wbsGo').addEventListener('click', async () => {
+    const go = $('#wbsGo');
+    go.disabled = true;
+    try {
+      const r = await post('/api/panel/import/workbuddy-file', { data: text, dryRun: false });
+      preview.innerHTML = '';
+      status.textContent = t('import_wbs_done')
+        .replace('{a}', r.added || 0).replace('{b}', r.updated || 0)
+        .replace('{c}', r.skipped || 0).replace('{d}', r.invalid || 0);
+      toast(status.textContent);
+      loadOverview();
+    } catch (e) {
+      status.textContent = e.message;
+      go.disabled = false;
+    }
+  });
 }
 
 /* Trae */
