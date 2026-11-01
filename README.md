@@ -29,10 +29,21 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 
 ## 模型与路由
 
-- `GET /v1/models` 聚合四家模型列表
+- `GET /v1/models` 聚合各家模型列表
 - `model` 支持 **前缀指定提供商**：`trae:glm-5.2`、`workbuddy:claude-sonnet-4.6`、`zcode:glm-5.3`、`qwen:qwen3.8-max`（简写 `qw:` / `qwen-web:` 也认）
 - 不带前缀按 `defaultProvider` 与 `modelRoutes` 路由（面板 → 设置）
 - 思考控制（千问）：模型名加后缀 `-thinking` / `-no-thinking`
+
+## 外部 API（自定义接入）
+
+除了内置的五家，还可以把**任意第三方 API** 接进 TokenHub（面板 → 账号 → 外部 API → 添加账号）：
+
+- **OpenAI 兼容**：DeepSeek、月之暗面、硅基流动、OpenRouter、智谱开放平台、各类中转站……
+- **Anthropic 兼容**：Claude 官方 API / Anthropic 格式中转站（自动做 OpenAI↔Anthropic 双向转换，tools / 多模态图片 / 思考链都支持）
+- 一个账号 = 一个端点（地址 + Key + 接口类型 + 可选模型列表），可挂多个、互不干扰
+- 可选 **模型前缀**（slug）：比如填 `deepseek`，客户端就用 `deepseek:deepseek-chat` 精确指定这家
+- 「测试连接」一键验证地址和 Key，自动回填发现的模型列表
+- 走完统一网关：多账号轮换、失效冷却、用量统计、分享钥匙全部可用
 
 ## 自动领取
 

@@ -76,8 +76,21 @@ func TestGetAndIDs(t *testing.T) {
 		t.Fatal("Get 行为异常")
 	}
 	ids := IDs()
-	if ids[0] != "off" || len(ids) != len(Templates)+1 {
+	if ids[0] != "off" || len(ids) != len(Templates)+len(Fronts)+1 {
 		t.Fatalf("IDs 异常: %v", ids)
+	}
+	for _, f := range Fronts {
+		if !IsFront(f.ID) || GetFront(f.ID) == nil || Get(f.ID) != nil {
+			t.Fatalf("前置段 %q 分类异常", f.ID)
+		}
+	}
+	for _, want := range []string{"armor_scope", "3_liner", "aim"} {
+		if !Valid(want) {
+			t.Fatalf("Valid(%q) 应为 true", want)
+		}
+	}
+	if Valid("nope") || Valid("") {
+		t.Fatal("Valid 对未知 ID 应为 false")
 	}
 }
 

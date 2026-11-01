@@ -44,6 +44,13 @@ func InitFile(dir string) {
 	mu.Unlock()
 }
 
+// LogDir 返回当前日志目录（未开启落盘时为空串）。
+func LogDir() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return logDir
+}
+
 func writeLogFile(line string) {
 	if logDir == "" {
 		return

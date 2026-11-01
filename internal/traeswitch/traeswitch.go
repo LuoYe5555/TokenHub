@@ -69,7 +69,17 @@ func Apply(acct *store.Account) (string, error) {
 	storagePath := filepath.Join(storageDir, "storage.json")
 
 	authEnv := acct.ExtraGet(store.ExtraTraeAuthEnvelope)
+	if localimport.TraeEnvelopeExpired(authEnv) {
+		// 信封快照已过期（抓会话后 token 到期，期间 IDE 端轮换我们拿不到）。
+		// 写死信封会被 IDE 直接清掉 = 切换后退出登录。改用账号池当前 token 合成新信封
+		//（池每日自动刷新 token，通常仍是新鲜的）。
+		authEnv = ""
+	}
 	if authEnv == "" {
+		if acct.AccessToken == "" || (acct.ExpiresAt > 0 && acct.ExpiresAt < time.Now().Unix()+1800) {
+			return "", fmt.Errorf("账号登录信封已过期且 token 不可用（过期于 %s），请先在面板刷新该账号或重新「抓会话」",
+				formatUnix(acct.ExpiresAt))
+		}
 		// 无原始信封 → 用 token 合成（IDE 端可用，但无法自动续期，临期后需重登）
 		env, err := localimport.SynthAuthEnvelope(
 			acct.AccessToken, acct.RefreshToken, acct.UID,
@@ -146,6 +156,13 @@ func uuid() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	h := hex.EncodeToString(b)
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
+func formatUnix(sec int64) string {
+	if sec <= 0 {
+		return "未知"
+	}
+	return time.Unix(sec, 0).Format("2006-01-02 15:04")
 }
 
 // ── 进程管理 ──

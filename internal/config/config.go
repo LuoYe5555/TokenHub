@@ -2,12 +2,16 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"tokenhub/internal/pj"
 )
 
 const (
@@ -19,6 +23,7 @@ const (
 	PZCode     = "zcode"
 	PQwen      = "qwen"
 	POllama    = "ollama"
+	PCustom    = "custom"
 )
 
 // GitCommit 构建时由 -ldflags -X 注入（git rev-parse --short HEAD），
@@ -27,6 +32,37 @@ const (
 var GitCommit = ""
 
 func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama} }
+
+// 破甲生效范围（PJScope）。
+const (
+	PJScopeAll    = "all"    // 所有提供商（默认）
+	PJScopeOllama = "ollama" // 仅本机 Ollama（旧行为，保留给需要时切回）
+)
+
+// PJOn 破甲总开关是否打开（且策略有效）。gateway 每次请求都会问它。
+func (c *Config) PJOn() bool {
+	if c == nil || !c.PJEnabled {
+		return false
+	}
+	if c.PJMode == "" || c.PJMode == "off" {
+		return false
+	}
+	return c.PJMode == "auto" || pj.Valid(c.PJMode) || looksLikeCombo(c.PJMode)
+}
+
+// looksLikeCombo "armor_scope+3_liner" 这类组合策略：每一段都得认得。
+func looksLikeCombo(id string) bool {
+	parts := strings.Split(id, "+")
+	if len(parts) == 0 {
+		return false
+	}
+	for _, p := range parts {
+		if !pj.Valid(strings.TrimSpace(p)) {
+			return false
+		}
+	}
+	return true
+}
 
 // ProviderConfig 单个提供商的开关与上游地址覆盖（上游接口变更时使用）。
 type ProviderConfig struct {
@@ -57,7 +93,7 @@ type Config struct {
 
 	// 自动领取
 	AutoCheckin           bool  `json:"autoCheckin"`           // 每日签到（WorkBuddy CN / Trae）
-	AutoUpdate            bool  `json:"autoUpdate,omitempty"`  // 自动更新：比对 GitHub release tag 与本地构建 commit
+	AutoUpdate            bool  `json:"autoUpdate"`            // 自动更新：比对 GitHub release tag 与本地构建 commit；默认关
 	CheckinHours          []int `json:"checkinHours"`          // 每天这些整点尝试签到（当日已签自动跳过）
 	WBIntlKeepalive       bool  `json:"wbIntlKeepalive"`       // WorkBuddy 国际版无签到，用一条极小对话保活
 	ZCodeAutoClaim        bool  `json:"zcodeAutoClaim"`        // ZCode 活动套餐自动轮询领取
@@ -85,8 +121,15 @@ type Config struct {
 
 	ReqDump bool `json:"reqDump,omitempty"` // 诊断：把客户端原始请求快照落盘 data/reqdump（默认关）
 
-	// 破甲实验（提示词对抗研究）：off=默认关闭；仅对本地 Ollama 提供商生效（写死，不受路由影响）
+	// 破甲（提示词对抗研究）总开关：true=设置页里配置的破甲策略对所有提供商生效。
+	// 关闭时 PJMode 保留但完全不注入。
+	PJEnabled bool `json:"pjEnabled"`
+	// 破甲策略：off / auto / 模板 ID（3_liner、antigpt…）/ 前置段 ID（armor_scope…）/
+	// 「前置段+模板」组合。auto=按模型自动探测可用的策略并记忆（data/pj_auto.json）。
 	PJMode string `json:"pjMode"`
+	// 破甲生效范围：all=所有提供商（默认）；off/OllamaOnly 之外的旧值视为 all。
+	// 保留字段是为了兼容老配置里「只对本机 Ollama 生效」的行为。
+	PJScope string `json:"pjScope,omitempty"`
 
 	// 网络加速：本地加速代理（DNS 优选+连接竞速）+ 系统代理一键接管；true=随程序自启
 	Accel bool `json:"accel"`
@@ -117,7 +160,7 @@ func Default() *Config {
 		},
 
 		AutoCheckin:           true,
-		AutoUpdate:            false, // 自动更新默认关（2026-10-25 用户要求）：更新时机自己掌控，设置页可开
+		AutoUpdate:            false, // 自动更新默认关（明确写进配置，缺省不靠 omitempty 推断）
 		CheckinHours:          []int{9, 21},
 		WBIntlKeepalive:       false,
 		ZCodeAutoClaim:        true,
@@ -125,7 +168,9 @@ func Default() *Config {
 		ZCodeInjectShape:      "overwrite",
 		ZCodeTSHint:           true, // ToolSearch 描述补丁：实测(10-24)不触发 3007
 		ZCodeStripTS:          true, // 摘除 ToolSearch/DeferExecuteTool：复刻 ZCode 原生环境，根除"找不到工具"
-		PJMode:                "off",
+		PJEnabled:             true, // 破甲默认开启（策略默认 armor_scope，可用设置页关闭）
+		PJMode:                "armor_scope",
+		PJScope:               PJScopeAll,
 
 		QuotaRefreshSec:    300,
 		TraeAutoSwitch:     true,
@@ -146,7 +191,7 @@ func Load(dataDir string) (*Config, error) {
 	cfg := Default()
 	p := filepath.Join(dataDir, "config.json")
 	if b, err := os.ReadFile(p); err == nil {
-		if err := json.Unmarshal(b, cfg); err != nil {
+		if err := json.Unmarshal(stripBOM(b), cfg); err != nil {
 			return nil, err
 		}
 	}
@@ -156,6 +201,13 @@ func Load(dataDir string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// stripBOM 去掉 UTF-8 BOM。用户用记事本 / PowerShell 5 的 Set-Content -Encoding utf8
+// 手改 config.json 时会带上 BOM，encoding/json 遇到它会直接报
+// "invalid character 'ï' looking for beginning of value"，导致程序启动失败。
+func stripBOM(b []byte) []byte {
+	return bytes.TrimPrefix(b, []byte{0xEF, 0xBB, 0xBF})
 }
 
 func (c *Config) Normalize() {
@@ -199,10 +251,15 @@ func (c *Config) Normalize() {
 	default:
 		c.ZCodeInjectShape = "overwrite"
 	}
-	switch c.PJMode {
-	case "off", "auto", "3_liner", "antigpt", "betterdan", "aim":
+	// 破甲策略归一化：认得的模板/前置段/组合/auto 才留下，其余回落到 armor_scope
+	if !pj.Valid(c.PJMode) && c.PJMode != "auto" && c.PJMode != "off" {
+		c.PJMode = "armor_scope"
+	}
+	// 破甲生效范围：只有显式写 ollama 才退回老行为（仅本机），其余一律全提供商
+	switch c.PJScope {
+	case PJScopeAll, PJScopeOllama:
 	default:
-		c.PJMode = "off"
+		c.PJScope = PJScopeAll
 	}
 	if c.RefreshSkewMin <= 0 {
 		c.RefreshSkewMin = 1440

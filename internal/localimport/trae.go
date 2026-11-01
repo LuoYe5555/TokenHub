@@ -102,11 +102,47 @@ func TraeEnvelopeInfo(b64 string) *TraeAuthInfo {
 	return &TraeAuthInfo{Token: a.Token, UID: uidString(a.UserID), Host: a.Host}
 }
 
+// TraeEnvelopeExpired 判断信封里的 token 是否已过期（含 24h 安全边距）。
+// 信封解不开（无法判定）返回 false —— 交由 IDE 自行判断，保持原有回写行为。
+// 背景信封快照只在「该账号登录 IDE 时抓会话」才会更新，账号池每日刷新的是 API token，
+// 两者独立；过期信封写回 IDE 会被直接清掉（表现为切换后退出登录）。
+func TraeEnvelopeExpired(b64 string) bool {
+	a := tcDecrypt(b64)
+	if a == nil {
+		return false
+	}
+	exp := expiredAtUnix(a.ExpiredAt)
+	return exp > 0 && exp <= time.Now().Add(24*time.Hour).Unix()
+}
+
+// TraeEnvelopeExpiry 返回信封 token 过期时刻（unix 秒；解不开返回 0）。
+func TraeEnvelopeExpiry(b64 string) int64 {
+	a := tcDecrypt(b64)
+	if a == nil {
+		return 0
+	}
+	return expiredAtUnix(a.ExpiredAt)
+}
+
 // TcDecryptForDiag 导出解密入口（诊断用）。
 func TcDecryptForDiag(b64 string) *traeAuth { return tcDecrypt(b64) }
 
-// tcDecrypt 解开 storage.json 里的 tc 信封；失败返回 nil。
-func tcDecrypt(b64 string) *traeAuth {
+// TcDecryptRawForDiag 导出原始明文 JSON（诊断用；token 等字段原样返回，调用方自行打码）。
+func TcDecryptRawForDiag(b64 string) (json.RawMessage, bool) {
+	raw := tcDecrypt(b64)
+	if raw == nil {
+		return nil, false
+	}
+	// tcDecrypt 走结构体解析会丢未知字段，这里重新解一次拿完整 body
+	if full := tcDecryptBody(b64); full != nil {
+		return full, true
+	}
+	b, err := json.Marshal(raw)
+	return b, err == nil
+}
+
+// tcDecryptBody 解开信封并返回完整明文 body（不经过结构体，保留全部字段）。
+func tcDecryptBody(b64 string) json.RawMessage {
 	if b64 == "" {
 		return nil
 	}
@@ -142,13 +178,22 @@ func tcDecrypt(b64 string) *traeAuth {
 		if string(check[:]) != string(plain[:64]) {
 			continue
 		}
-		var auth traeAuth
-		if json.Unmarshal(body, &auth) != nil {
-			continue
-		}
-		return &auth
+		return json.RawMessage(body)
 	}
 	return nil
+}
+
+// tcDecrypt 解开 storage.json 里的 tc 信封；失败返回 nil。
+func tcDecrypt(b64 string) *traeAuth {
+	body := tcDecryptBody(b64)
+	if body == nil {
+		return nil
+	}
+	var auth traeAuth
+	if json.Unmarshal(body, &auth) != nil {
+		return nil
+	}
+	return &auth
 }
 
 func pkcs7Unpad(data []byte, blockSize int) []byte {

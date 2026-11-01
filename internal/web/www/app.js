@@ -73,6 +73,22 @@ const I18N = {
     save: '保存', cancel: '取消', close: '关闭', confirm: '确认',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode（智谱 GLM）',
     prov_qwen: '千问 Qwen（网页版）', prov_ollama: 'Ollama（本地模型）',
+    prov_custom: '外部 API（自定义）',
+    custom_title: '接入外部 API', custom_edit_title: '编辑外部 API',
+    custom_nick: '名称（显示在面板）', custom_nick_ph: '如：DeepSeek / 月之暗面 / 某中转站',
+    custom_base: '接口地址（Base URL）', custom_base_ph: '如 https://api.deepseek.com（OpenAI 兼容自动补 /v1）',
+    custom_key: 'API Key', custom_key_ph: 'sk-…',
+    custom_style: '接口类型',
+    custom_style_openai: 'OpenAI 兼容（DeepSeek / 月之暗面 / 硅基流动 / OpenRouter 等）',
+    custom_style_anthropic: 'Anthropic 兼容（Claude 官方 / 中转站）',
+    custom_models: '模型列表（可选，逗号分隔）', custom_models_ph: '如 deepseek-chat, deepseek-reasoner；留空自动发现',
+    custom_slug: '模型前缀（可选）', custom_slug_ph: '如 deepseek → 用 deepseek:模型名 指定这家',
+    custom_slug_tip: '多家外部 API 各用各的前缀，互不冲突',
+    custom_test: '测试连接', custom_testing: '测试中…',
+    custom_test_ok: '连接成功，发现 {x} 个模型',
+    custom_test_none: '连接成功，但未发现模型（可手动填模型列表）',
+    custom_edit: '编辑',
+    custom_meta_addr: '地址',
     login_qw_title: '添加千问网页版账号',
     login_qw_s1: '浏览器登录 chat.qwen.ai（网页版对话）',
     login_qw_s2: 'F12 → 网络(Network) → 随便发一条消息 → 找到 chat/completions 请求 → 复制请求头 Authorization 里 Bearer 后面的令牌',
@@ -164,12 +180,17 @@ const I18N = {
     set_opt_dedup: 'Token 优化：重复内容折叠', set_opt_dedup_d: '同一次对话里完全相同的大段内容（重复读文件/重复命令输出）只保留最新一份，旧的出现折叠成一行标记；完整内容仍在上下文，不影响效果',
     set_opt_neardup: 'Token 优化：近重复折叠（深度）', set_opt_neardup_d: '同一工具前后调用结果 ≥90% 行相同时只留最新一份（如改一行后重读文件、换参数重读同一份大文件），旧的折叠成标记；比"重复内容折叠"多救回一倍以上 token，模型以最新结果为准',
     set_accel: '网络加速（本地加速器）', set_accel_d: 'PAC 选择性加速：仅 WorkBuddy 国际站、GitHub 等名单域名走本地加速代理（DNS 优选 + 多 IP 连接竞速，只中继不解密不装证书），国内网站与内网全部直连不受影响。已兼容其他加速器：开启前自动备份你的代理/PAC 设置（Watt Toolkit、Clash 等）并串联保留，关闭时一键还原',
-    set_pj: '破甲实验（提示词对抗研究）',
+    set_pj: '破甲', set_pj_d: '把破甲策略注入发往上游的请求：对所有提供商（WorkBuddy / Trae / ZCode / Qwen / Ollama）都可使用。前置段类策略（armor_scope / operator_priority）写进 system，一次设置长期生效；模板类（3_liner / antigpt / betterdan / aim）套在最后一轮用户消息上；也可选「前置段+模板」组合。「自动」= 每个模型首次请求时按固定探测句逐策略试一遍，第一个能正常作答的记住（data/pj_auto.json），之后直接用。不保证一定成功——效果因模型和上游而异。',
+    set_pj_on: '启用破甲', set_pj_strategy: '破甲策略', set_pj_scope: '生效范围',
+    set_pj_scope_all: '所有提供商（默认）', set_pj_scope_ollama: '仅本机 Ollama（旧行为）',
+    set_pj_reset: '清空自动记忆', set_pj_reset_ok: '自动记忆已清空，下次请求会重新探测',
+    set_pj_status: '当前状态', set_pj_st_on: '已启用', set_pj_st_off: '已关闭', set_pj_st_noop: '已开启但策略为 off，实际不注入',
+    set_pj_st_models: '自动记忆', set_pj_st_none: '暂无记录',
     set_reqdump: '请求快照（诊断）', set_reqdump_d: '开启后把客户端发来的原始请求落盘到 data/reqdump（只留最近 8 份），日志会打印每次请求的工具数量与名称。用于诊断「模型说找不到工具」这类客户端侧问题，日常使用保持关闭',
     set_auto_update: '自动更新', set_auto_update_d: '每 6 小时检查 GitHub 最新 release，发现新版本自动下载替换并重启（构建版本号一致则跳过）',
     upd_check: '检查更新', upd_checking: '检查中…', upd_cur: '当前版本', upd_latest: '最新', upd_state_up_to_date: '已是最新', upd_state_updated: '已下载更新，即将重启', upd_state_failed: '失败', upd_state_pending_restart: '待重启生效', upd_none: '尚未检查',
-    set_pj_d: '默认关闭。开启后仅对本地 Ollama 模型生效：把研究模板套在你的最后一条消息上，测试本地模型安全对齐的健壮性（garak 红队思路）。选「自动」时按模型探测哪个模板有效并记忆（存 data/pj_auto.json）。绝不作用于任何网络提供商。不保证破甲成功——效果因模型而异。',
-    set_pj_off: '关闭（默认）',
+    set_pj_d: '默认开启，对所有提供商生效。前置段策略（armor_scope / operator_priority）写进 system 长期生效；模板类（3_liner / antigpt / betterdan / aim）套在最后一轮用户消息上；也可选「前置段+模板」组合。选「自动」时按模型逐个探测并记忆结果（data/pj_auto.json）。效果因模型和上游而异。',
+    set_pj_off: '关闭',
     set_pj_auto: '自动（按模型探测模板）',
     us_saved: 'Token 优化已节省', us_saved_tip: '{n}的网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
     set_trae_switch: 'Trae 积分耗尽自动换号',
@@ -256,6 +277,22 @@ const I18N = {
     save: 'Save', cancel: 'Cancel', close: 'Close', confirm: 'OK',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode (GLM)',
     prov_qwen: 'Qwen (Web)', prov_ollama: 'Ollama (local models)',
+    prov_custom: 'External APIs (custom)',
+    custom_title: 'Add external API', custom_edit_title: 'Edit external API',
+    custom_nick: 'Name (shown in panel)', custom_nick_ph: 'e.g. DeepSeek / Moonshot / some relay',
+    custom_base: 'Base URL', custom_base_ph: 'e.g. https://api.deepseek.com (/v1 auto-appended for OpenAI style)',
+    custom_key: 'API Key', custom_key_ph: 'sk-…',
+    custom_style: 'API style',
+    custom_style_openai: 'OpenAI compatible (DeepSeek / Moonshot / SiliconFlow / OpenRouter…)',
+    custom_style_anthropic: 'Anthropic compatible (Claude official / relays)',
+    custom_models: 'Models (optional, comma-separated)', custom_models_ph: 'e.g. deepseek-chat, deepseek-reasoner; empty = auto-discover',
+    custom_slug: 'Model prefix (optional)', custom_slug_ph: 'e.g. deepseek → use deepseek:model to route here',
+    custom_slug_tip: 'Each external API uses its own prefix; no conflicts',
+    custom_test: 'Test connection', custom_testing: 'Testing…',
+    custom_test_ok: 'Connected, found {x} models',
+    custom_test_none: 'Connected, but no models found (fill the model list manually)',
+    custom_edit: 'Edit',
+    custom_meta_addr: 'URL',
     share_limit_ol: 'tokens limit',
     login_qw_title: 'Add Qwen Web Account',
     login_qw_s1: 'Sign in at chat.qwen.ai in your browser',
@@ -350,12 +387,17 @@ const I18N = {
     set_opt_dedup: 'Token saver: fold duplicates', set_opt_dedup_d: 'Byte-identical large content repeated in one conversation (re-read files, repeated command output) keeps only the latest copy; earlier ones become a one-line marker. Full content stays in context',
     set_opt_neardup: 'Token saver: near-duplicate folding (deep)', set_opt_neardup_d: 'When consecutive results of the same tool share ≥90% identical lines (e.g. re-reading a file after a one-line edit), older copies are folded into a marker; recovers far more tokens than exact-duplicate folding. The model uses the newest result',
     set_accel: 'Network accelerator (local)', set_accel_d: 'Selective PAC acceleration: only listed domains (WorkBuddy international, GitHub, etc.) go through the local accelerator proxy (DNS optimization + racing TCP connections, relay only, no decryption/certificates); domestic sites and intranet stay direct and untouched. Compatible with other accelerators: your existing proxy/PAC settings (Watt Toolkit, Clash, etc.) are backed up and chained, restored on turn-off',
-    set_pj: 'Armor-piercing experiment (prompt adversarial research)',
+    set_pj: 'Armor-piercing (prompt injection)',
+    set_pj_d: 'Injects the selected strategy into every upstream request, for ALL providers (WorkBuddy / Trae / ZCode / Qwen / Ollama). Front-section strategies (armor_scope / operator_priority) go into the system prompt and stay active; template strategies (3_liner / antigpt / betterdan / aim) wrap the last user message; combined "front+template" is also available. "Auto" probes each model once with a fixed probe sentence, remembers the first strategy that answers normally (data/pj_auto.json) and reuses it. Results vary by model and upstream.',
+    set_pj_on: 'Enable armor-piercing', set_pj_strategy: 'Strategy', set_pj_scope: 'Scope',
+    set_pj_scope_all: 'All providers (default)', set_pj_scope_ollama: 'Local Ollama only (legacy)',
+    set_pj_reset: 'Clear auto memory', set_pj_reset_ok: 'Auto memory cleared; the next request will re-probe',
+    set_pj_status: 'Status', set_pj_st_on: 'Enabled', set_pj_st_off: 'Disabled', set_pj_st_noop: 'Enabled but strategy is off — nothing is injected',
+    set_pj_st_models: 'Auto memory', set_pj_st_none: 'No records yet',
     set_reqdump: 'Request snapshot (diagnostics)', set_reqdump_d: "When enabled, raw client requests are saved to data/reqdump (last 8 kept) and the log prints each request's tool count and names. For diagnosing client-side issues like \"model says it can't find tools\". Keep off for daily use",
     set_auto_update: 'Auto update', set_auto_update_d: 'Checks GitHub latest release every 6 hours; downloads, swaps and restarts automatically when a new build is found (skipped if build commit matches)',
     upd_check: 'Check now', upd_checking: 'Checking…', upd_cur: 'Current', upd_latest: 'Latest', upd_state_up_to_date: 'Up to date', upd_state_updated: 'Updated, restarting', upd_state_failed: 'Failed', upd_state_pending_restart: 'Restart to apply', upd_none: 'Not checked yet',
-    set_pj_d: 'Off by default. When enabled, applies ONLY to local Ollama models: wraps a research template around your last message to test the robustness of the local model\'s safety alignment (garak-style red teaming). Never applies to any network provider.',
-    set_pj_off: 'Off (default)',
+    set_pj_off: 'Off',
     us_saved: 'Saved by token optimization', us_saved_tip: 'Estimated input tokens saved by gateway optimization (JSON compaction + duplicate folding), {n}',
 
     set_trae_switch: 'Auto-switch when Trae credits exhausted',
@@ -833,6 +875,7 @@ function providerMeta(name) {
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
     qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
     ollama: { label: t('prov_ollama'), icon: '/icons/ollama.png', color: '#9aa0a6' },
+    custom: { label: t('prov_custom'), icon: '/favicon.svg', color: '#b07cff' },
   };
   return map[name] || { label: name, icon: '/favicon.svg', color: '#8b93a5' };
 }
@@ -1003,7 +1046,7 @@ function renderAccounts() {
   const box = $('#acctSections');
   box.innerHTML = '';
   renderZcodePending(box);
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'custom']) {
     const meta = providerMeta(name);
     const list = (overview.accounts || []).filter(a => a.provider === name);
     const sec = document.createElement('div');
@@ -1060,6 +1103,8 @@ function acctCard(a) {
       </div>
       <div class="meta">
         ${a.uid ? `<span>UID ${esc(String(a.uid))}</span>` : ''}
+        ${a.provider === 'custom' && a.extra && a.extra.customBaseURL ? `<span>${t('custom_meta_addr')}: ${esc(a.extra.customBaseURL)}</span>` : ''}
+        ${a.provider === 'custom' && a.extra && a.extra.customSlug ? `<span class="badge">${esc(a.extra.customSlug)}:</span>` : ''}
         ${!noCloud ? `<span>${t('token_expiry')}: ${a.expiresAt ? fmtTime(a.expiresAt) : t('never')}</span>
         <span>${t('last_checkin')}: ${a.lastCheckinMsg ? esc(a.lastCheckinMsg) + ' · ' + fmtTime(a.lastCheckinAt) : t('never')}</span>` : ''}
       </div>
@@ -1076,6 +1121,7 @@ function acctCard(a) {
       ${a.provider === 'zcode' ? `<button class="sm" data-act="plans">🎪 ${t('zc_plans')}</button>
       <button class="sm" data-act="raw">🧾 ${t('act_raw')}</button>` : ''}
       ${a.provider === 'qwen' && a.extra && a.extra.punishURL ? `<button class="sm danger" data-act="verify" title="${esc(t('qw_verify_tip'))}">🛡 ${t('qw_verify')}</button>` : ''}
+      ${a.provider === 'custom' ? `<button class="sm" data-act="editcustom">✏️ ${t('custom_edit')}</button>` : ''}
       <button class="sm" data-act="toggle">${a.enabled ? '⏸' : '▶'} ${a.enabled ? t('act_disable') : t('act_enable')}</button>
       <button class="sm danger" data-act="delete">🗑</button>
     </div>`;
@@ -1177,6 +1223,7 @@ function openAddModal(provider) {
   if (provider === 'trae') return addModalTrae();
   if (provider === 'zcode') return addModalZcode();
   if (provider === 'qwen') return addModalQwen();
+  if (provider === 'custom') return addModalCustom(null);
 }
 
 function steps(items) {
@@ -1508,6 +1555,90 @@ function addModalQwen() {
   });
 }
 
+/* External custom API */
+function addModalCustom(a) {
+  const isEdit = !!a;
+  const ex = (a && a.extra) || {};
+  showModal(isEdit ? t('custom_edit_title') : t('custom_title'), `
+    <div class="field"><label>${t('custom_nick')}</label><input type="text" id="cuNick" placeholder="${esc(t('custom_nick_ph'))}" value="${esc(a ? (a.nickname || '') : '')}"></div>
+    <div class="field"><label>${t('custom_base')}</label><input type="text" id="cuBase" placeholder="${esc(t('custom_base_ph'))}" value="${esc(ex.customBaseURL || '')}"></div>
+    <div class="field"><label>${t('custom_key')}</label><input type="text" id="cuKey" placeholder="${esc(t('custom_key_ph'))}" value="${esc(a ? (a.accessToken || '') : '')}"></div>
+    <div class="field"><label>${t('custom_style')}</label>
+      <select id="cuStyle">
+        <option value="openai" ${(ex.customStyle || 'openai') === 'openai' ? 'selected' : ''}>${t('custom_style_openai')}</option>
+        <option value="anthropic" ${ex.customStyle === 'anthropic' ? 'selected' : ''}>${t('custom_style_anthropic')}</option>
+      </select>
+    </div>
+    <div class="field"><label>${t('custom_models')}</label><input type="text" id="cuModels" placeholder="${esc(t('custom_models_ph'))}" value="${esc(ex.customModels || '')}"></div>
+    <div class="field"><label>${t('custom_slug')}</label><input type="text" id="cuSlug" placeholder="${esc(t('custom_slug_ph'))}" value="${esc(ex.customSlug || '')}"></div>
+    <div class="hint">${t('custom_slug_tip')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="primary" id="cuSave">${t('save')}</button>
+      <button class="sm" id="cuTest">🔌 ${t('custom_test')}</button>
+    </div>
+    <div class="hint" id="cuStatus"></div>
+  `);
+  const collect = () => ({
+    nickname: $('#cuNick').value.trim(),
+    baseURL: $('#cuBase').value.trim(),
+    apiKey: $('#cuKey').value.trim(),
+    style: $('#cuStyle').value,
+    models: $('#cuModels').value.trim(),
+    slug: $('#cuSlug').value.trim(),
+  });
+  $('#cuTest').addEventListener('click', async () => {
+    const f = collect();
+    if (!f.baseURL) { $('#cuStatus').textContent = t('custom_base') + ' ?'; return; }
+    const btn = $('#cuTest');
+    btn.disabled = true;
+    btn.textContent = t('custom_testing');
+    try {
+      const r = await post('/api/panel/custom/test', { baseURL: f.baseURL, apiKey: f.apiKey, style: f.style });
+      if (r.ok) {
+        if (r.models && r.models.length) {
+          $('#cuStatus').textContent = t('custom_test_ok').replace('{x}', r.models.length);
+          if (!$('#cuModels').value.trim()) $('#cuModels').value = r.models.join(', ');
+        } else {
+          $('#cuStatus').textContent = t('custom_test_none');
+        }
+      } else {
+        $('#cuStatus').textContent = (r.error || 'fail');
+      }
+    } catch (e) { $('#cuStatus').textContent = e.message; }
+    btn.disabled = false;
+    btn.textContent = '🔌 ' + t('custom_test');
+  });
+  $('#cuSave').addEventListener('click', async () => {
+    const f = collect();
+    if (!f.baseURL) { $('#cuStatus').textContent = t('custom_base') + ' ?'; return; }
+    if (!f.apiKey) { $('#cuStatus').textContent = t('custom_key') + ' ?'; return; }
+    try {
+      if (isEdit) {
+        await patch(`/api/panel/account/${a.id}`, {
+          nickname: f.nickname,
+          extra: {
+            customBaseURL: f.baseURL,
+            customStyle: f.style,
+            customModels: f.models,
+            customSlug: f.slug,
+            apiKey: f.apiKey,
+          },
+        });
+      } else {
+        await post('/api/panel/account', {
+          provider: 'custom',
+          accessToken: f.apiKey,
+          nickname: f.nickname,
+          extra: { customBaseURL: f.baseURL, customStyle: f.style, customModels: f.models, customSlug: f.slug },
+        });
+      }
+      toast(t('saved_ok'));
+      closeModal();
+      loadOverview();
+    } catch (e) { $('#cuStatus').textContent = e.message; }
+  });
+}
+
 /* Manual import */
 function manualModal(provider) {
   showModal(t('manual_title'), `
@@ -1648,8 +1779,8 @@ function startLogStream() {
 $('#btnClearLogsView').addEventListener('click', () => { logBuf.length = 0; $('#logsBox').innerHTML = ''; });
 
 /* ───────────────────────── settings ───────────────────────── */
-function settingRow(label, desc, ctl) {
-  return `<div class="setting-row"><div><div>${label}</div><div class="d">${desc || ''}</div></div><div class="ctl">${ctl}</div></div>`;
+function settingRow(label, desc, ctl, cls) {
+  return `<div class="setting-row${cls ? ' ' + cls : ''}"><div><div>${label}</div><div class="d">${desc || ''}</div></div><div class="ctl">${ctl}</div></div>`;
 }
 function renderSettings() {
   if (!cfgData) return;
@@ -1672,10 +1803,12 @@ function renderSettings() {
     settingRow(t('set_opt_dedup'), t('set_opt_dedup_d'), `<label class="switch"><input type="checkbox" id="sOptDedup" ${(c.optDedup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_opt_neardup'), t('set_opt_neardup_d'), `<label class="switch"><input type="checkbox" id="sOptNearDup" ${(c.optNearDup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_accel'), t('set_accel_d'), `<label class="switch"><input type="checkbox" id="sAccel" ${c.accel ? 'checked' : ''}><i></i></label>`),
-    settingRow(t('set_auto_update'), t('set_auto_update_d'), `<label class="switch"><input type="checkbox" id="sAutoUpdate" ${c.autoUpdate !== false ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_auto_update'), t('set_auto_update_d'), `<label class="switch"><input type="checkbox" id="sAutoUpdate" ${c.autoUpdate ? 'checked' : ''}><i></i></label>`),
     settingRow(`${t('upd_cur')} <span class="badge" style="font-family:var(--mono)" id="updVer"></span>`, `<span id="updStat">${t('upd_none')}</span>`, `<button class="sm" id="btnUpdateCheck">${t('upd_check')}</button>`),
     settingRow(t('set_reqdump'), t('set_reqdump_d'), `<label class="switch"><input type="checkbox" id="sReqDump" ${c.reqDump ? 'checked' : ''}><i></i></label>`),
-    settingRow(t('set_pj'), t('set_pj_d'), `<select id="sPJ">${['off', 'auto', '3_liner', 'antigpt', 'betterdan', 'aim'].map(v => `<option value="${v}" ${(c.pjMode || 'off') === v ? 'selected' : ''}>${v === 'off' ? t('set_pj_off') : (v === 'auto' ? t('set_pj_auto') : v)}</option>`).join('')}</select>`),
+    settingRow(t('set_pj'), t('set_pj_d'), `<label class="switch"><input type="checkbox" id="sPJ" ${c.pjEnabled !== false ? 'checked' : ''}><i></i></label><select id="sPJMode" class="grow">${pjOptions(c.pjMode)}</select>`, 'wide'),
+    settingRow(t('set_pj_scope'), '', `<select id="sPJScope">${['all', 'ollama'].map(v => `<option value="${v}" ${(c.pjScope || 'all') === v ? 'selected' : ''}>${v === 'ollama' ? t('set_pj_scope_ollama') : t('set_pj_scope_all')}</option>`).join('')}</select>`),
+    settingRow(t('set_pj_status'), `<span id="pjStat">…</span>`, `<button class="sm" id="btnPJReset">${t('set_pj_reset')}</button>`, 'wide'),
   ].join('');
   $('#sRegen').addEventListener('click', () => {
     const bytes = new Uint8Array(12);
@@ -1683,7 +1816,58 @@ function renderSettings() {
     $('#sKey').value = 'sk-th-' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   });
   loadUpdateStatus(false);
+  loadPJStatus();
 }
+
+// 破甲策略下拉：前置段优先（长期生效），再是模板，最后是「前置段+模板」组合与 auto。
+const PJ_FRONTS = ['armor_scope', 'operator_priority'];
+const PJ_TPL = ['3_liner', 'antigpt', 'betterdan', 'aim'];
+function pjOptions(cur) {
+  const v = cur || 'armor_scope';
+  const opts = [['off', t('set_pj_off')], ['auto', t('set_pj_auto')]];
+  PJ_FRONTS.forEach(f => opts.push([f, f + ' · 前置段']));
+  PJ_TPL.forEach(x => opts.push([x, x + ' · 模板']));
+  PJ_FRONTS.forEach(f => PJ_TPL.forEach(x => opts.push([f + '+' + x, f + ' + ' + x])));
+  if (!opts.some(o => o[0] === v)) opts.push([v, v]);
+  return opts.map(([val, label]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+// 破甲当前状态：开关 / 策略 / 哪些提供商会被注入 / auto 已记忆的模型
+async function loadPJStatus() {
+  const el = $('#pjStat');
+  if (!el) return;
+  try {
+    const d = await api('/api/panel/pj/status');
+    const parts = [];
+    if (!d.enabled) parts.push(t('set_pj_st_off'));
+    else if (!d.active) parts.push(t('set_pj_st_noop'));
+    else parts.push(t('set_pj_st_on') + ' · ' + d.mode);
+    if (d.active) {
+      const provs = Object.entries(d.providers || {}).filter(([, on]) => on).map(([k]) => providerMeta(k).label);
+      if (provs.length) parts.push(provs.join(' / '));
+    }
+    const auto = Object.entries(d.auto || {});
+    parts.push(t('set_pj_st_models') + ': ' + (auto.length ? auto.map(([m, s]) => `${m}→${s}`).join('，') : t('set_pj_st_none')));
+    el.textContent = parts.join(' · ');
+  } catch (e) {
+    el.textContent = e.message;
+  }
+}
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('#btnPJReset');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await post('/api/panel/pj/reset');
+    toast(t('set_pj_reset_ok'));
+    loadPJStatus();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // updStateText 把更新器 lastState 映射为面板文案
 function updStateText(s, latest) {
@@ -1741,7 +1925,9 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     optCompactJSON: $('#sOptCompact').checked,
     optDedup: $('#sOptDedup').checked,
     optNearDup: $('#sOptNearDup').checked,
-    pjMode: $('#sPJ').value,
+    pjEnabled: $('#sPJ').checked,
+    pjMode: $('#sPJMode').value,
+    pjScope: $('#sPJScope').value,
     reqDump: $('#sReqDump').checked,
     autoUpdate: $('#sAutoUpdate').checked,
   };
@@ -1755,6 +1941,7 @@ $('#btnSaveSettings').addEventListener('click', async () => {
       cfgData.accel = accelOn;
     } catch (e2) { toast(e2.message, true); }
     toast(t('saved_ok'));
+    loadPJStatus();
   } catch (e) { toast(e.message, true); }
 });
 
@@ -2176,7 +2363,7 @@ $('#priceSearch')?.addEventListener('input', (() => {
 })());
 $('#btnPriceRefresh')?.addEventListener('click', e => withBusy(e.currentTarget, () => loadPrices(true), t('price_refreshing')));
 
-const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama'];
+const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'custom'];
 function shareLimitLabel(pv) {
   return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : pv === 'ollama' ? t('share_limit_ol') : t('share_limit_zc');
 }

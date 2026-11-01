@@ -13,6 +13,7 @@ import (
 	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/provider"
+	"tokenhub/internal/provider/custom"
 	"tokenhub/internal/store"
 )
 
@@ -56,7 +57,46 @@ func (p *Pool) Providers() map[string]provider.Provider {
 }
 
 // shortAlias 模型前缀别名。
-var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama}
+var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom}
+
+// customBySlug 按 slug 前缀找外部 API 账号（大小写不敏感；保留名不作为 slug）。
+func (p *Pool) customBySlug(slug string) *store.Account {
+	if p.Provider(store.PCustom) == nil || slug == "" {
+		return nil
+	}
+	lower := strings.ToLower(slug)
+	if lower == store.PCustom || lower == "ext" {
+		return nil
+	}
+	for _, a := range p.store.ByProvider(store.PCustom) {
+		if a.Enabled && !a.Dead && custom.Slug(a) == lower {
+			return a
+		}
+	}
+	return nil
+}
+
+// matchSlugPrefix 从模型名里认领外部 API slug 前缀（如 "deepseek:deepseek-chat"）。
+// 跳过已知提供商段（custom:、ext:），取第一段能匹配 slug 的段。
+func (p *Pool) matchSlugPrefix(model string) string {
+	if !strings.Contains(model, ":") {
+		return ""
+	}
+	segs := strings.Split(model, ":")
+	for i := 0; i < len(segs)-1; i++ {
+		lower := strings.ToLower(segs[i])
+		if lower == store.PCustom || lower == "ext" {
+			continue
+		}
+		if p.Provider(lower) != nil || func() bool { _, ok := shortAlias[lower]; return ok }() {
+			continue
+		}
+		if p.customBySlug(segs[i]) != nil {
+			return lower
+		}
+	}
+	return ""
+}
 
 // ResolveModel 解析 "provider:model" 前缀 / ModelRoutes / 默认提供商。
 // 兼容客户端自定义 slug 前缀（如 "custom-local:zcode:glm-5.3-flash"）：
@@ -71,6 +111,10 @@ func (p *Pool) ResolveModel(model string) (provider.Provider, string) {
 			}
 			if real, ok := shortAlias[name]; ok && p.Provider(real) != nil {
 				return p.Provider(real), strings.Join(segs[i+1:], ":")
+			}
+			// 外部 API slug 前缀（如 "deepseek:deepseek-chat"）→ custom 提供商
+			if p.customBySlug(name) != nil {
+				return p.Provider(store.PCustom), strings.Join(segs[i+1:], ":")
 			}
 		}
 	}
@@ -112,6 +156,41 @@ func (p *Pool) candidates(name string, now time.Time) []*store.Account {
 		ok = append(ok, a)
 	}
 	return append(ok, exhausted...)
+}
+
+// filterCustom 外部 API 账号选择：
+// 有 slug 时只留 slug 匹配的账号；否则按模型过滤 —— 声明了模型列表的账号只接
+// 列表内的模型，未声明的账号（自动发现）作为兜底排在后面。
+func (p *Pool) filterCustom(cands []*store.Account, slug, model string) []*store.Account {
+	if slug != "" {
+		var out []*store.Account
+		for _, a := range cands {
+			if custom.Slug(a) == slug {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	var declared, wildcard []*store.Account
+	anyDeclared := false
+	for _, a := range cands {
+		list := custom.DeclaredModels(a)
+		if len(list) == 0 {
+			wildcard = append(wildcard, a)
+			continue
+		}
+		anyDeclared = true
+		for _, m := range list {
+			if m == model {
+				declared = append(declared, a)
+				break
+			}
+		}
+	}
+	if !anyDeclared {
+		return cands
+	}
+	return append(declared, wildcard...)
 }
 
 // UnavailableReason 解释某提供商为何无可用账号（面板与 503 消息用）。
@@ -227,6 +306,19 @@ func (p *Pool) Chat(ctx context.Context, model string, openaiReq []byte, sink pr
 	}
 	ts := &trackingSink{inner: sink}
 	cands := p.candidates(prov.Name(), time.Now())
+	if prov.Name() == store.PCustom {
+		slug := p.matchSlugPrefix(model)
+		cands = p.filterCustom(cands, slug, bare)
+		if len(cands) == 0 {
+			hint := ""
+			if slug != "" {
+				hint = "（前缀 " + slug + " 没有对应的外部 API 账号或该账号不可用）"
+			} else {
+				hint = "（模型 " + bare + " 不在任何外部 API 账号的模型列表中，检查账号配置）"
+			}
+			return provider.Err(provider.KindModel, 503, "没有可用的外部 API 账号%s", hint)
+		}
+	}
 	if len(cands) == 0 {
 		return provider.Err(provider.KindQuota, 503, "没有可用的 %s 账号：%s", prov.Name(), p.UnavailableReason(prov.Name()))
 	}
@@ -451,6 +543,26 @@ func (p *Pool) AllModels(ctx context.Context) map[string][]provider.ModelInfo {
 	out := map[string][]provider.ModelInfo{}
 	for name, prov := range p.Providers() {
 		if pc := p.cfg.PC(name); !pc.Enabled {
+			continue
+		}
+		// 外部 API：多个账号是不同上游，模型列表取并集
+		if name == store.PCustom {
+			seen := map[string]bool{}
+			var list []provider.ModelInfo
+			for _, a := range p.candidates(name, time.Now()) {
+				if l, err := prov.Models(ctx, a); err == nil {
+					for _, m := range l {
+						if !seen[m.ID] {
+							seen[m.ID] = true
+							list = append(list, m)
+						}
+					}
+				}
+			}
+			if list == nil {
+				list = prov.SeedModels()
+			}
+			out[name] = list
 			continue
 		}
 		var list []provider.ModelInfo

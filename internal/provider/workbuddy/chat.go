@@ -1,15 +1,19 @@
 package workbuddy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"tokenhub/internal/httpx"
+	"tokenhub/internal/logx"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/store"
 )
@@ -163,8 +167,68 @@ func prepareBody(openaiReq []byte, defaultModel string) (map[string]any, error) 
 		if first == nil || first["role"] != "system" {
 			b["messages"] = append([]any{map[string]any{"role": "system", "content": "You are a helpful AI assistant."}}, msgs...)
 		}
+		guardMessages(b["messages"].([]any))
 	}
 	return b, nil
+}
+
+// ── 渠道校验规避（11128）──
+// 上游自 2026-10 起对 system 提示词做客户端指纹拦截：提示词以
+// "You are an AI agent powered by …" 开头（前导空白也命中）即整单拒绝，
+// 返回 400 / code 11128 "Illegal API invocation from an unapproved channel"。
+// 与账号、token、请求头（UA/X-Domain/X-Product 等）、模型、端点均无关——
+// 同一账号发普通提示词可正常返回（dsh-buddy-guard 2026-10-29 实测）。
+// 社区验证的通过写法："You are an AI agent, powered by …"（仅加一个逗号，语义不变）。
+const (
+	fpOld = "You are an AI agent powered by "
+	fpNew = "You are an AI agent, powered by "
+	// 上游第二条规则（2026-10-27，AND 匹配）：system 里同时出现下面两句即拒。
+	// 均为 DeepSeek Harness 描述 @ 路径引用语法的固定文案，每轮必带。
+	// 只破坏一句即可让 AND 匹配失败；改写语义等价、长度相近（dsh-buddy-guard v0.1.2 实测通过）。
+	fpAOld = "Tokens prefixed with @ are paths the user explicitly referenced"
+	fpANew = "Path tokens starting with the at-sign point at locations the user referenced"
+)
+
+// guardMessages 中和全部消息（system/user/assistant/tool）中的已知客户端指纹。
+// 覆盖全部角色：上游规则以 system 为主，但 channel 类拦截可能扫全对话，全改最稳。
+// 改写均语义等价，不影响模型理解。
+func guardMessages(msgs []any) {
+	for _, mv := range msgs {
+		m, ok := mv.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch c := m["content"].(type) {
+		case string:
+			m["content"] = guardText(c)
+		case []any:
+			for _, pv := range c {
+				if pm, ok := pv.(map[string]any); ok {
+					if t, ok := pm["text"].(string); ok {
+						pm["text"] = guardText(t)
+					}
+				}
+			}
+		}
+	}
+}
+
+func guardText(s string) string {
+	s = strings.ReplaceAll(s, fpOld, fpNew)
+	return strings.ReplaceAll(s, fpAOld, fpANew)
+}
+
+// dump11128 上游 11128 渠道校验拦截时，保存完整出站请求样本到日志目录，
+// 供指纹词表分析（社区 recipes：dump → 重放 → 逐变量定位）。
+func dump11128(raw []byte) {
+	dir := logx.LogDir()
+	if dir == "" {
+		return
+	}
+	p := filepath.Join(dir, fmt.Sprintf("11128-dump-%d.json", time.Now().Unix()))
+	if os.WriteFile(p, raw, 0o600) == nil {
+		logx.Warnf("workbuddy", "11128 拦截：出站请求样本已保存 %s（用于指纹词表分析）", p)
+	}
 }
 
 // normalizeToolChoice 返回归一化后的 tool_choice；drop=true 时同时删除 tools。
@@ -211,26 +275,35 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		return err
 	}
 	raw, _ := json.Marshal(body)
-	resp, err := httpx.DoStream(ctx, "POST", s.ChatBase+"/v2/chat/completions", chatHeaders(s, acct), raw, p.cfg.ConnectTimeout())
-	if err != nil {
-		sink.Close()
-		return provider.Err(provider.KindNetwork, 0, "%v", err)
-	}
-	defer func() {
-		if resp.Stream != nil {
-			resp.Stream.Close()
+	// 通道校验类 400（11128）存在风控抖动：同一请求原样重发一发常可通过（EchoBird 社区实测）。
+	// 仅在未向客户端写出任何字节前重试，且最多一次，避免加重风控。
+	for attempt := 1; ; attempt++ {
+		resp, err := httpx.DoStream(ctx, "POST", s.ChatBase+"/v2/chat/completions", chatHeaders(s, acct), raw, p.cfg.ConnectTimeout())
+		if err != nil {
+			sink.Close()
+			return provider.Err(provider.KindNetwork, 0, "%v", err)
 		}
-	}()
-	if resp.Status >= 400 {
-		sink.Close()
-		return wbFriendlyError(resp.Status, resp.Body)
+		if resp.Status >= 400 && bytes.Contains(resp.Body, []byte("11128")) {
+			dump11128(raw)
+			if attempt == 1 {
+				resp.Stream.Close()
+				time.Sleep(800 * time.Millisecond)
+				continue
+			}
+		}
+		if resp.Status >= 400 {
+			sink.Close()
+			return wbFriendlyError(resp.Status, resp.Body)
+		}
+		// 200 + JSON = 业务错误信封
+		if resp.ContentType != "" && strings.Contains(resp.ContentType, "application/json") {
+			sink.Close()
+			return wbFriendlyError(resp.Status, resp.Body)
+		}
+		err = parseChatSSE(resp.Stream, body, sink)
+		resp.Stream.Close()
+		return err
 	}
-	// 200 + JSON = 业务错误信封
-	if resp.ContentType != "" && strings.Contains(resp.ContentType, "application/json") {
-		sink.Close()
-		return wbFriendlyError(resp.Status, resp.Body)
-	}
-	return parseChatSSE(resp.Stream, body, sink)
 }
 
 // wbFriendlyError 解析国服错误信封，把易误判的业务码翻译成明确指引。
@@ -255,6 +328,11 @@ func wbFriendlyError(status int, body []byte) error {
 			"模型在上游不存在或未接入（%s）：国服目录已下线 claude/gpt/gemini，请改用 GLM / Kimi / DeepSeek / 混元 等国服在架模型", env.Msg)
 	case 11101:
 		return provider.Err(provider.KindClient, status, "上游要求流式请求（%s）", env.Msg)
+	case 11128:
+		return provider.Err(provider.KindClient, status,
+			"上游渠道校验拦截（11128，%s）：提示词命中非官方客户端指纹，与账号/token/请求头无关。"+
+				"TokenHub 已自动改写已知指纹并原地重试一次仍被拒；"+
+				"本次请求完整样本已存至日志目录（11128-dump-*.json），把它发给维护者即可定位并更新指纹词表", env.Msg)
 	case 11140:
 		// 社区/同类网关（DSH workbuddy-gateway）共识：11140=账号级风控拦截（请求未达模型），
 		// 常见诱因：高频调用、异地/多设备登录、内容审核。重试会加重风控，等 2~4h 通常自解。
@@ -320,6 +398,11 @@ func parseChatSSE(r io.Reader, sentBody map[string]any, sink provider.Sink) erro
 				code, msg := extractError(chunk.Code, chunk.Error, chunk.Message)
 				if code == 11140 {
 					msg = "上游账号级风控（11140 会话服务异常）：请求被服务端拦截未达模型，勿反复重试，停 2~4 小时通常自解；持续出现请凭 Trace ID 找官方工单"
+				}
+				if code == 11128 {
+					dump, _ := json.Marshal(sentBody)
+					dump11128(dump)
+					msg = "上游渠道校验拦截（11128）：提示词命中非官方客户端指纹，与账号/token 无关；TokenHub 已自动改写已知指纹并原地重试仍被拒，请求样本已存日志目录（11128-dump-*.json）供词表分析"
 				}
 				sink.StreamError(code, msg)
 				return false

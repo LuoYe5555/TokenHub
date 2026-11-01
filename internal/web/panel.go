@@ -19,9 +19,11 @@ import (
 	"tokenhub/internal/autoslide"
 	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
+	"tokenhub/internal/pj"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/pricing"
 	"tokenhub/internal/provider"
+	"tokenhub/internal/provider/custom"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/zcode"
 	"tokenhub/internal/scheduler"
@@ -46,6 +48,8 @@ type Panel struct {
 	ulog   *usagelog.Log
 	prices *pricing.Table
 	upd    *updater.Manager
+	pj     PJStatus       // 破甲状态源（gateway 在 main 里注入，可为 nil）
+	pjAuto PJAutoAccessor // 破甲 auto 记忆的读取/重置（可为 nil）
 
 	mu            sync.Mutex
 	wbStates      map[string]string              // state → realm
@@ -154,9 +158,12 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("POST /api/panel/config", p.handleSaveConfig)
 	api("GET /api/panel/accel", p.handleAccelStatus)
 	api("POST /api/panel/accel", p.handleAccelToggle)
+	api("GET /api/panel/pj/status", p.handlePJStatus)
+	api("POST /api/panel/pj/reset", p.handlePJReset)
 
 	api("POST /api/panel/account", p.handleAccountAdd)
 	api("PATCH /api/panel/account/{id}", p.handleAccountPatch)
+	api("POST /api/panel/custom/test", p.handleCustomTest)
 	api("DELETE /api/panel/account/{id}", p.handleAccountDelete)
 	api("POST /api/panel/account/{id}/quota", p.handleAccountQuota)
 	api("GET /api/panel/account/{id}/quota-raw", p.handleAccountQuotaRaw)
@@ -251,8 +258,64 @@ func (p *Panel) handlePricesRefresh(w http.ResponseWriter, r *http.Request) {
 
 // ── 自动更新 ──
 
+// ── 破甲 ──
+
+// handlePJStatus 破甲运行状态：开关、策略、策略清单、生效范围、各提供商是否会被注入、
+// auto 模式已记忆的策略。设置页顶部的「当前状态」就是它。
+func (p *Panel) handlePJStatus(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{
+		"enabled":    p.cfg.PJEnabled,
+		"mode":       p.cfg.PJMode,
+		"scope":      p.cfg.PJScope,
+		"active":     p.cfg.PJOn(),
+		"strategies": pj.Strategies(),
+		"providers":  map[string]bool{},
+	}
+	for _, name := range config.AllProviders() {
+		out["providers"].(map[string]bool)[name] = p.cfg.PJOn() &&
+			(p.cfg.PJScope != config.PJScopeOllama || name == store.POllama)
+	}
+	if p.pj != nil {
+		if snap := p.pj.PJStatusSnapshot(); snap != nil {
+			out["gateway"] = snap
+		}
+	}
+	if p.pjAuto != nil {
+		out["auto"] = p.pjAuto.PJAutoSnapshot()
+	}
+	writeJSON(w, out)
+}
+
+// handlePJReset 清空 auto 模式的记忆，让下一次请求重新探测。
+func (p *Panel) handlePJReset(w http.ResponseWriter, r *http.Request) {
+	if p.pjAuto != nil {
+		if err := p.pjAuto.PJAutoReset(); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	logx.Infof("panel", "破甲 auto 记忆已清空，下次请求将重新探测")
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // SetUpdater 注入更新器（main 启动时调用）。
 func (p *Panel) SetUpdater(u *updater.Manager) { p.upd = u }
+
+// PJStatus 破甲状态的只读视图（由 gateway 实现，避免 web ↔ gateway 互相依赖）。
+type PJStatus interface {
+	PJStatusSnapshot() map[string]any
+}
+
+// PJAutoAccessor 破甲 auto 记忆的读取/重置（由 gateway 实现）。
+type PJAutoAccessor interface {
+	PJAutoSnapshot() map[string]string
+	PJAutoReset() error
+}
+
+// SetPJ 注入破甲状态源与 auto 记忆（main 启动时调用）。
+func (p *Panel) SetPJ(st PJStatus, auto PJAutoAccessor) {
+	p.pj, p.pjAuto = st, auto
+}
 
 func (p *Panel) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	st := map[string]any{
@@ -758,11 +821,20 @@ func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode && in.Provider != store.PQwen {
-		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode / qwen")
+	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode && in.Provider != store.PQwen && in.Provider != store.PCustom {
+		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode / qwen / custom")
 		return
 	}
-	if strings.TrimSpace(in.AccessToken) == "" && strings.TrimSpace(in.RefreshToken) == "" {
+	if in.Provider == store.PCustom {
+		if err := validateCustomExtra(in.Extra); err != "" {
+			writeErr(w, 400, err)
+			return
+		}
+		if strings.TrimSpace(in.AccessToken) == "" {
+			writeErr(w, 400, "外部 API 需要填写 API Key")
+			return
+		}
+	} else if strings.TrimSpace(in.AccessToken) == "" && strings.TrimSpace(in.RefreshToken) == "" {
 		writeErr(w, 400, "accessToken / refreshToken 至少填一个")
 		return
 	}
@@ -792,10 +864,68 @@ func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "id": acct.ID})
 }
 
+// validateCustomExtra 校验外部 API 账号字段；通过返回空串，否则返回错误消息。
+func validateCustomExtra(extra map[string]string) string {
+	if extra == nil || strings.TrimSpace(extra["customBaseURL"]) == "" {
+		return "外部 API 需要填写接口地址（Base URL）"
+	}
+	slug := strings.ToLower(strings.TrimSpace(extra["customSlug"]))
+	if slug != "" {
+		for _, c := range slug {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return "模型前缀只能用小写字母 / 数字 / 中划线"
+			}
+		}
+		if slug == store.PCustom || slug == "ext" {
+			return "该模型前缀是保留名，换一个"
+		}
+	}
+	return ""
+}
+
+// handleCustomTest 外部 API 连通性测试：返回上游模型列表（面板「测试连接」按钮用）。
+func (p *Panel) handleCustomTest(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL string `json:"baseURL"`
+		APIKey  string `json:"apiKey"`
+		Style   string `json:"style"`
+	}
+	if err := readBody(r, &in); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if strings.TrimSpace(in.BaseURL) == "" {
+		writeErr(w, 400, "接口地址不能为空")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	style := strings.TrimSpace(in.Style)
+	if style != "anthropic" {
+		style = "openai"
+	}
+	acct := &store.Account{AccessToken: strings.TrimSpace(in.APIKey)}
+	acct.ExtraSet(store.ExtraCustomBaseURL, in.BaseURL)
+	acct.ExtraSet(store.ExtraCustomStyle, style)
+	prov := custom.New(p.cfg)
+	list, err := prov.Models(ctx, acct)
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ids := make([]string, 0, len(list))
+	for _, m := range list {
+		ids = append(ids, m.ID)
+	}
+	writeJSON(w, map[string]any{"ok": true, "models": ids})
+}
+
 func (p *Panel) handleAccountPatch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var in struct {
-		Enabled *bool `json:"enabled"`
+		Enabled  *bool             `json:"enabled"`
+		Nickname *string           `json:"nickname"`
+		Extra    map[string]string `json:"extra"`
 	}
 	if err := readBody(r, &in); err != nil {
 		writeErr(w, 400, err.Error())
@@ -809,6 +939,25 @@ func (p *Panel) handleAccountPatch(w http.ResponseWriter, r *http.Request) {
 				a.DeadReason = ""
 				a.CooldownUntil = 0
 			}
+		}
+		if in.Nickname != nil {
+			a.Nickname = strings.TrimSpace(*in.Nickname)
+		}
+		// 外部 API 账号允许编辑配置（地址 / Key / 类型 / 模型 / 前缀）
+		if a.Provider == store.PCustom && len(in.Extra) > 0 {
+			for _, k := range []string{store.ExtraCustomBaseURL, store.ExtraCustomStyle, store.ExtraCustomModels, store.ExtraCustomSlug} {
+				if v, ok := in.Extra[k]; ok {
+					a.ExtraSet(k, strings.TrimSpace(v))
+				}
+			}
+			if in.Extra["apiKey"] != "" {
+				a.AccessToken = strings.TrimSpace(in.Extra["apiKey"])
+			}
+			// 配置变了，之前的失效/冷却状态作废
+			a.Dead = false
+			a.DeadReason = ""
+			a.CooldownUntil = 0
+			a.CooldownReason = ""
 		}
 	})
 	if err != nil {

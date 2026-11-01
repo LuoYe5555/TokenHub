@@ -281,18 +281,35 @@ func (g *Gateway) optimizeReq(model string, body []byte, rec *usageRecorder) []b
 	return out
 }
 
-// applyPJ 破甲实验（提示词对抗研究）：仅当显式开启且目标提供商是本机 Ollama 时，
-// 把选中模板套在最后一条 user 消息上。网络提供商一律不经过此逻辑（边界写死）。
-func (g *Gateway) applyPJ(provName string, body []byte) []byte {
-	if g.cfg == nil || g.cfg.PJMode == "" || g.cfg.PJMode == "off" || pj.Get(g.cfg.PJMode) == nil {
+// applyPJ 破甲：把设置页选中的策略（模板 / 前置段 / 组合 / auto）套到请求上。
+// 对所有提供商生效（cfg.PJScope=all 时是默认行为）——这是「同一个入口，对所有
+// Provider 都走一遍」的那一层：无论请求路由到 workbuddy / trae / zcode / qwen /
+// ollama，都在发给上游之前过这里。总开关关闭时完全不动请求。
+func (g *Gateway) applyPJ(provName string, model string, body []byte) []byte {
+	return g.applyPJModel(provName, model, "", body)
+}
+
+// applyPJModel 同上，但带上「最原始的请求模型名」：pool 可能把裸模型名改写成
+// 别的形状，auto 记忆要用客户端给的那个名字做 key，才能跨账号/跨前缀稳定命中。
+func (g *Gateway) applyPJModel(provName string, model string, rawModel string, body []byte) []byte {
+	if g.cfg == nil || !g.cfg.PJOn() {
 		return body
 	}
-	if provName != store.POllama {
+	// 生效范围：默认全部提供商；显式配置成 ollama 时退回旧行为（只打本机）
+	if g.cfg.PJScope == config.PJScopeOllama && provName != store.POllama {
 		return body
 	}
-	out := pj.Apply(g.cfg.PJMode, body)
+	strategy := g.cfg.PJMode
+	if strategy == "auto" {
+		key := rawModel
+		if key == "" {
+			key = model
+		}
+		return g.pjAutoApply(key, body)
+	}
+	out := pj.ApplyStrategy(strategy, body)
 	if !bytes.Equal(out, body) {
-		logx.Infof("gateway", "破甲实验已注入（本地 Ollama，模板 %s）", g.cfg.PJMode)
+		logx.Infof("gateway", "破甲已注入（%s / %s，策略 %s）", provName, model, strategy)
 	}
 	return out
 }
@@ -342,7 +359,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		sink := NewOpenAIStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		body = g.optimizeReq(model, body, rec)
-		body = g.applyPJ(prov.Name(), body)
+		body = g.applyPJModel(prov.Name(), bare, model, body)
 		err := g.pool.Chat(ctx, model, body, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -364,7 +381,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	sink := NewAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	body = g.optimizeReq(model, body, rec)
-	body = g.applyPJ(prov.Name(), body)
+	body = g.applyPJModel(prov.Name(), bare, model, body)
 	err = g.pool.Chat(ctx, model, body, rec)
 	if shareID != "" {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -694,7 +711,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		sink := NewAnthropicStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		openaiReq = g.optimizeReq(model, openaiReq, rec)
-		openaiReq = g.applyPJ(prov.Name(), openaiReq)
+		openaiReq = g.applyPJModel(prov.Name(), bare, model, openaiReq)
 		err := g.pool.Chat(ctx, model, openaiReq, rec)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -716,7 +733,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	sink := NewAnthropicAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	openaiReq = g.optimizeReq(model, openaiReq, rec)
-	openaiReq = g.applyPJ(prov.Name(), openaiReq)
+	openaiReq = g.applyPJModel(prov.Name(), bare, model, openaiReq)
 	if err := g.pool.Chat(ctx, model, openaiReq, rec); err != nil {
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())

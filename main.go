@@ -23,6 +23,7 @@ import (
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/pricing"
+	"tokenhub/internal/provider/custom"
 	"tokenhub/internal/provider/ollama"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
@@ -80,6 +81,7 @@ func main() {
 	pl.Register(zcode.New(cfg))
 	pl.Register(qwen.New(cfg))
 	pl.Register(ollama.New(cfg))
+	pl.Register(custom.New(cfg))
 	zcode.WarmAppVersion()
 
 	// 启动即扫描本机已登录的客户端账号（静默导入，按 uid 去重）
@@ -171,6 +173,8 @@ func main() {
 	panel := web.NewPanel(cfg, st, pl, sched, sh, tunnelMgr, acc, ulog, prices)
 	upd := updater.New(cfg)
 	panel.SetUpdater(upd)
+	// 破甲状态源：设置页的「当前状态」与 auto 记忆的重置都走网关这一份
+	panel.SetPJ(gw, gw)
 	mux := http.NewServeMux()
 	gw.Register(mux)
 	panel.Register(mux)

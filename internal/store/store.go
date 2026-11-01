@@ -17,6 +17,7 @@ const (
 	PZCode     = "zcode"
 	PQwen      = "qwen"
 	POllama    = "ollama"
+	PCustom    = "custom"
 )
 
 // QuotaPart 额度明细（权益包 / 额度窗口）。
@@ -99,6 +100,12 @@ const (
 	ExtraWBImportSource     = "wbImportSource"     // 来源标记：wb-switch / manual / local
 	ExtraWBPhone            = "wbPhone"            // profile_raw.phoneNumber
 	ExtraWBUin              = "wbUin"              // profile_raw.uin
+
+	// custom（外部 API）账号字段
+	ExtraCustomBaseURL = "customBaseURL" // 上游地址，如 https://api.deepseek.com
+	ExtraCustomStyle   = "customStyle"   // openai（默认）| anthropic
+	ExtraCustomModels  = "customModels"  // 逗号分隔模型列表；空 = 自动发现
+	ExtraCustomSlug    = "customSlug"    // 模型前缀别名，如 deepseek → "deepseek:模型名"
 )
 
 func NewID() string {

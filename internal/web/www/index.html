@@ -144,14 +144,23 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tabs-mini{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .tabs-mini button{border-radius:8px}
 .tabs-mini button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-.setting-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)}
+.setting-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border);min-width:0}
 .setting-row:last-child{border-bottom:none}
+.setting-row>*:first-child{flex:1 1 auto;min-width:0}
 .setting-row .d{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.5}
-.setting-row .ctl{width:240px;min-width:240px;flex:none;display:flex;align-items:center;gap:8px}
-.setting-row .ctl>select,.setting-row .ctl>input{width:100%;flex:1;min-width:0}
-.setting-row .ctl .keyline{flex:1;min-width:0}
-.setting-row .ctl .keyline input{flex:1;min-width:0}
+.setting-row .ctl{width:240px;min-width:0;flex:0 1 240px;display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0}
+.setting-row .ctl>select,.setting-row .ctl>input{width:100%;flex:1 1 auto;min-width:0;max-width:100%}
+.setting-row .ctl .keyline{flex:1 1 auto;min-width:0;max-width:100%}
+.setting-row .ctl .keyline input{flex:1 1 auto;min-width:0}
+.setting-row .ctl .keyline input[type=checkbox]{flex:none;width:auto}
 /* 设置行右侧控件：统一 240px 列宽，所有控件（含开关）从同一左端起排 */
+/* 宽控件（开关+下拉并排）用 .wide：右侧列自动加宽但不超过卡片，始终保持右对齐 */
+.setting-row.wide .ctl{width:auto;flex:0 1 420px;min-width:220px}
+.setting-row .ctl .grow{flex:1 1 auto;min-width:0}
+@media (max-width:820px){
+  .setting-row{flex-wrap:wrap;align-items:flex-start}
+  .setting-row .ctl,.setting-row.wide .ctl{width:100%;flex:1 1 100%;justify-content:flex-start}
+}
 .switch{position:relative;width:42px;height:24px;flex:none;display:inline-block;vertical-align:middle}
 .switch input{opacity:0;width:0;height:0}
 .switch i{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.2s}
