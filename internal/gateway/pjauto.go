@@ -14,6 +14,7 @@ package gateway
 // 用客户端当轮内容去探测会污染用户看到的回复（探测结果不会回给客户端）。
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -107,20 +108,35 @@ func (g *Gateway) PJStatusSnapshot() map[string]any {
 	}
 }
 
+// pjAutoPick 只查 auto 记忆，不触发探测。返回 (策略, 是否命中已记忆的有效策略)。
+func (g *Gateway) pjAutoPick(key string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+	pick := g.pjMemory().get(key)
+	if pick == "" || pick == pjAutoNone {
+		return "", false
+	}
+	return pick, true
+}
+
 // pjAutoApply auto 模式入口：查记忆 → 命中即套用；未探测过则逐策略探测。
 // key 为客户端原始模型名；body 为原始请求 JSON（保留原 stream 设置）。
+// 注入形状跟随设置页档位（PJLean 精简档 + PJBudget 预算），探测与记忆共用。
 func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
 	if key == "" {
 		return body
 	}
+	body = g.foldPJDups(body)
 	mem := g.pjMemory()
 	switch pick := mem.get(key); {
 	case pick == pjAutoNone:
 		return body // 已知全部策略无效，透传
 	case pick != "":
 		if containsStrategy(pick) {
-			logx.Infof("gateway", "破甲 auto：模型 %s 使用已记忆策略 %s", key, pick)
-			return pj.ApplyStrategy(pick, body)
+			plan := pj.PlanForBudget(pick, g.cfg.PJBudget)
+			logx.Infof("gateway", "破甲 auto：模型 %s 使用已记忆策略 %s（%s）", key, pick, pjShapeLabel(plan))
+			return pj.ApplyPlan(plan, body)
 		}
 	}
 
@@ -132,9 +148,10 @@ func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	for _, strat := range pj.Strategies() {
-		payload := pj.ApplyStrategy(strat, probe)
-		if payload == nil {
-			continue
+		plan := pj.PlanForBudget(strat, g.cfg.PJBudget)
+		payload := pj.ApplyPlan(plan, probe)
+		if payload == nil || bytes.Equal(payload, probe) {
+			continue // 该策略在当前预算下装不下：跳过
 		}
 		sink := NewAggregateSink(key)
 		if err := g.pool.Chat(ctx, key, payload, sink); err != nil {
@@ -151,7 +168,7 @@ func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
 		if verdict == pj.VerdictAnswer {
 			mem.set(key, strat)
 			logx.Infof("gateway", "破甲 auto：模型 %s 自动选定策略 %s（已记忆，可在设置页重新探测）", key, strat)
-			return pj.ApplyStrategy(strat, body)
+			return pj.ApplyPlan(plan, body)
 		}
 	}
 	mem.set(key, pjAutoNone)

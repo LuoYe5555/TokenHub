@@ -1,0 +1,138 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0);
+  color: #fff;
+  margin: 0;
+  padding: 0;
+}
+
+#beep {
+  width: 0;
+  height: 0;
+}
+
+#notification {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  position: relative;
+  background: linear-gradient(180deg, #323A2F 0%, #232921 100%);
+  border: 1px solid #FFFFFF29;
+  box-sizing: border-box;
+  padding: 8px;
+  font-family: Microsoft YaHei UI;
+  user-select: none;
+}
+
+.notification-head {
+  display: flex;
+  align-items: center;
+}
+
+.notification-head .logo {
+  display: inline-block;
+  width: 70px;
+  height: 15px;
+}
+
+#notification-body {
+  padding-top: 8px;
+  display: flex;
+  align-items: center;
+}
+
+#notification.noIcon #notification-body .icon {
+  display: none;
+}
+
+#notification-body .icon {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  flex-grow: 0;
+}
+
+#notification-body .icon #icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#notification-body .message-box {
+  flex: 1;
+  margin-left: 8px;
+}
+
+#notification-body .message-box #title {
+  width: 256px;
+  padding: 0;
+  line-height: normal;
+  font-size: 18px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #FFD042;
+  font-family: "Microsoft YaHei UI";
+  font-style: normal;
+}
+
+#notification-body .message-info {
+  padding-top: 8px;
+  width: 256px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#notification-body .message-box #message {
+  flex: 1;
+  max-width: 189px;
+  display: -webkit-box;
+  font-size: 14px;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-all;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.70);
+  font-family: "Microsoft YaHei UI";
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+}
+
+#notification-body .message-info #goto-detail {
+  display: inline-block;
+  width: 50px;
+  flex-shrink: 0;
+  font-size: 12px;
+  cursor: pointer;
+  color: rgba(255, 208, 66, 0.30);
+  text-align: center;
+  font-family: "Microsoft YaHei UI";
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+}
+
+#notification-body .message-info #goto-detail:hover {
+  color: rgba(255, 208, 66, 0.70);
+}
+
+#notification #close-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  cursor: pointer;
+}
+
+#notification #close-icon:hover {
+  background-color: #FFFFFF0D;
+}

@@ -120,3 +120,47 @@ func TestTcSealRoundTrip(t *testing.T) {
 		t.Fatalf("round trip mismatch: %+v", got)
 	}
 }
+
+// TestPatchAuthEnvelopeToken 重签信封：token 对替换、账号资料保留、其余字段不动。
+func TestPatchAuthEnvelopeToken(t *testing.T) {
+	orig := map[string]any{
+		"token":            "old-token",
+		"refreshToken":     "old-rt",
+		"expiredAt":        "2026-01-01T00:00:00.000Z",
+		"refreshExpiredAt": "2027-01-01T00:00:00.000Z",
+		"tokenReleaseAt":   "2025-12-01T00:00:00.000Z",
+		"userId":           "2029016003649543",
+		"host":             "https://api.trae.com.cn",
+		"account":          map[string]any{"username": "用户2118697025", "email": "a@b.c"},
+	}
+	raw, _ := json.Marshal(orig)
+	env, err := tcSeal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := PatchAuthEnvelopeToken(env, "new-token", "new-rt", 1795000000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ok := TcDecryptRawForDiag(patched)
+	if !ok {
+		t.Fatal("patched envelope not decryptable")
+	}
+	var m map[string]any
+	if json.Unmarshal(body, &m) != nil {
+		t.Fatal("patched body not json")
+	}
+	if m["token"] != "new-token" || m["refreshToken"] != "new-rt" {
+		t.Fatalf("token pair not replaced: %v", m)
+	}
+	if m["expiredAt"] != "2026-11-18T11:06:40.000Z" { // 1795000000
+		t.Fatalf("expiredAt not patched: %v", m)
+	}
+	acc, _ := m["account"].(map[string]any)
+	if acc == nil || acc["username"] != "用户2118697025" {
+		t.Fatalf("account metadata lost: %v", m["account"])
+	}
+	if m["host"] != "https://api.trae.com.cn" || m["refreshExpiredAt"] != "2027-01-01T00:00:00.000Z" {
+		t.Fatalf("unrelated fields changed: %v", m)
+	}
+}

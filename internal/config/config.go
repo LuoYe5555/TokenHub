@@ -130,6 +130,15 @@ type Config struct {
 	// 破甲生效范围：all=所有提供商（默认）；off/OllamaOnly 之外的旧值视为 all。
 	// 保留字段是为了兼容老配置里「只对本机 Ollama 生效」的行为。
 	PJScope string `json:"pjScope,omitempty"`
+	// 破甲精简档：true=前置段注入精简版（Lean），token 成本约为完整版的 1/3。
+	// 无精简版的段回退完整版；auto 模式探测与已记忆策略同样按此档注入。
+	PJLean bool `json:"pjLean,omitempty"`
+	// 破甲注入预算（字符）：前置段+模板总字符超过该值时逐级降档
+	// （完整→精简→只留最强前置段），0=不限（默认 6000，约 2000 tokens）。
+	PJBudget int `json:"pjBudget,omitempty"`
+	// 破甲段重复折叠：true=注入前先把客户端回传历史里重复出现的破甲段
+	// 折叠成短标记（tokensaver Pass 0），默认开。
+	PJCompact *bool `json:"pjCompact,omitempty"`
 
 	// 网络加速：本地加速代理（DNS 优选+连接竞速）+ 系统代理一键接管；true=随程序自启
 	Accel bool `json:"accel"`
@@ -171,6 +180,9 @@ func Default() *Config {
 		PJEnabled:             true, // 破甲默认开启（策略默认 armor_scope，可用设置页关闭）
 		PJMode:                "armor_scope",
 		PJScope:               PJScopeAll,
+		PJLean:                false, // 默认完整版注入；长上下文/高费用场景可开精简档
+		PJBudget:              6000,  // 注入预算：约 2000 tokens，超限自动降档
+		PJCompact:             nil,   // 默认开（nil=开）：重复破甲段折叠
 
 		QuotaRefreshSec:    300,
 		TraeAutoSwitch:     true,
@@ -261,6 +273,13 @@ func (c *Config) Normalize() {
 	default:
 		c.PJScope = PJScopeAll
 	}
+	// 破甲注入预算：负值视为不限，0 走默认 6000
+	if c.PJBudget < 0 {
+		c.PJBudget = 0
+	}
+	if c.PJBudget == 0 {
+		c.PJBudget = 6000
+	}
 	if c.RefreshSkewMin <= 0 {
 		c.RefreshSkewMin = 1440
 	}
@@ -302,6 +321,9 @@ func (c *Config) OptCompactJSONOn() bool { return c.OptCompactJSON == nil || *c.
 
 // OptNearDupOn 近重复工具结果折叠开关（缺省开）。
 func (c *Config) OptNearDupOn() bool { return c.OptNearDup == nil || *c.OptNearDup }
+
+// PJCompactOn 破甲段重复折叠开关（缺省开）。
+func (c *Config) PJCompactOn() bool { return c.PJCompact == nil || *c.PJCompact }
 
 // PC 返回指定提供商配置（保证非 nil）。
 func (c *Config) PC(name string) *ProviderConfig {

@@ -281,6 +281,39 @@ func (g *Gateway) optimizeReq(model string, body []byte, rec *usageRecorder) []b
 	return out
 }
 
+// pjNextStrategy failover 用：给定当前策略，返回重试用的策略。
+// 策略表按「强→弱」排序：当前策略被拒说明它不够强，直接上表头（最强组合）；
+// 当前已是最强（表头）时返回 ""——没有更强的了，不再重试。
+func pjNextStrategy(cur string) string {
+	all := pj.Strategies()
+	if len(all) == 0 {
+		return ""
+	}
+	for i, s := range all {
+		if s == cur {
+			if i == 0 {
+				return "" // 已是最强
+			}
+			return all[0]
+		}
+	}
+	return all[0] // 未知/为空（auto 未展开）→ 直接上最强
+}
+
+// shouldPJRetry 非流式回复是否需要破甲重试：破甲开着、回复被判拒答。
+func (g *Gateway) shouldPJRetry(provName string, text string) bool {
+	if g.cfg == nil || !g.cfg.PJOn() {
+		return false
+	}
+	if g.cfg.PJScope == config.PJScopeOllama && provName != store.POllama {
+		return false
+	}
+	if strings.TrimSpace(text) == "" {
+		return false
+	}
+	return pj.LooksRefused(text)
+}
+
 // applyPJ 破甲：把设置页选中的策略（模板 / 前置段 / 组合 / auto）套到请求上。
 // 对所有提供商生效（cfg.PJScope=all 时是默认行为）——这是「同一个入口，对所有
 // Provider 都走一遍」的那一层：无论请求路由到 workbuddy / trae / zcode / qwen /
@@ -291,6 +324,11 @@ func (g *Gateway) applyPJ(provName string, model string, body []byte) []byte {
 
 // applyPJModel 同上，但带上「最原始的请求模型名」：pool 可能把裸模型名改写成
 // 别的形状，auto 记忆要用客户端给的那个名字做 key，才能跨账号/跨前缀稳定命中。
+// 注入管线（顺序固定）：
+//  1. 查策略（auto 按记忆展开）；
+//  2. 折叠客户端回传历史里重复出现的破甲段（PJCompact，默认开）；
+//  3. 按注入预算选形状（完整 → 精简 → 只留最强前置段 → 放弃）；
+//  4. 落注入（ApplyPlan），日志带策略、档位与估算 token 成本。
 func (g *Gateway) applyPJModel(provName string, model string, rawModel string, body []byte) []byte {
 	if g.cfg == nil || !g.cfg.PJOn() {
 		return body
@@ -307,11 +345,78 @@ func (g *Gateway) applyPJModel(provName string, model string, rawModel string, b
 		}
 		return g.pjAutoApply(key, body)
 	}
-	out := pj.ApplyStrategy(strategy, body)
+	// 折叠历史里重复的破甲段（客户端把带段上下文整包回传的场景）
+	body = g.foldPJDups(body)
+	plan := pj.PlanForBudget(strategy, g.pjEffectiveBudget())
+	out := pj.ApplyPlan(plan, body)
 	if !bytes.Equal(out, body) {
-		logx.Infof("gateway", "破甲已注入（%s / %s，策略 %s）", provName, model, strategy)
+		logx.Infof("gateway", "破甲已注入（%s / %s，策略 %s，%s）≈+%d tokens",
+			provName, model, strategy, pjShapeLabel(plan), pjInjectionCost(strategy, plan))
+	} else if !plan.Has {
+		logx.Infof("gateway", "破甲未注入（%s / %s，策略 %s 超出预算 %d 字符且精简档仍装不下）",
+			provName, model, strategy, g.cfg.PJBudget)
 	}
 	return out
+}
+
+// pjEffectiveBudget 注入预算：PJLean 开启时把预算压到「完整版装不下、精简版装得下」
+// 的区间（精简 armor_max 约 916 字符 + 模板余量 → 1400 上限最稳），
+// PlanForBudget 自然落精简档；关闭时按原预算走完整档。
+func (g *Gateway) pjEffectiveBudget() int {
+	if g.cfg.PJLean {
+		const leanCap = 1400 // 完整 armor_max≈2535 字符装不下；精简 916 + aim 模板可过
+		if g.cfg.PJBudget > leanCap {
+			return leanCap
+		}
+	}
+	return g.cfg.PJBudget
+}
+
+// foldPJDups 折叠请求里重复出现的破甲前置段（PJCompact 开关，默认开）。
+// 只开 tokensaver 的 Pass 0（DupSystem），其余优化归 optimizeReq 管。
+func (g *Gateway) foldPJDups(body []byte) []byte {
+	if !g.cfg.PJCompactOn() {
+		return body
+	}
+	out, res := tokensaver.Optimize(body, tokensaver.Options{Dedup: true, DupSystem: true, MinChars: 500})
+	if res.DupSysFolded > 0 {
+		logx.Infof("gateway", "破甲段去重：折叠 %d 条重复 system 段，省约 %d tokens", res.DupSysFolded, res.SavedTokens)
+	}
+	return out
+}
+
+// pjShapeLabel 注入档位标签（日志用）。
+func pjShapeLabel(plan pj.BudgetPlan) string {
+	switch {
+	case plan.Has && plan.Lean && plan.Front != "":
+		return "精简档"
+	case plan.Has && plan.Front == "":
+		return "仅模板"
+	case plan.Has:
+		return "完整档"
+	default:
+		return "放弃"
+	}
+}
+
+// pjInjectionCost 估算本次注入的 token 成本（前置段 + 模板，按所选形状）。
+func pjInjectionCost(strategy string, plan pj.BudgetPlan) int64 {
+	var cost int64
+	if plan.Has {
+		if f := pj.GetFront(plan.Front); f != nil {
+			s := f.Prompt
+			if plan.Lean && f.Lean != "" {
+				s = f.Lean
+			}
+			cost += tokensaver.FrontTokenCost(s)
+		}
+		for _, p := range strings.Split(strategy, "+") {
+			if t := pj.Get(strings.TrimSpace(p)); t != nil && !plan.Lean {
+				cost += tokensaver.FrontTokenCost(t.Prompt)
+			}
+		}
+	}
+	return cost
 }
 
 // ── OpenAI ──
@@ -381,6 +486,7 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	sink := NewAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	body = g.optimizeReq(model, body, rec)
+	prePJ := body // failover 重试底稿：优化后、破甲注入前
 	body = g.applyPJModel(prov.Name(), bare, model, body)
 	err = g.pool.Chat(ctx, model, body, rec)
 	if shareID != "" {
@@ -399,10 +505,48 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, mapClientStatus(perr), string(perr.Kind), perr.Msg)
 		return
 	}
+	// 破甲 failover：回复被判拒答且还有更强策略时，用最强策略在底稿上重打一次（非流式最多一次）。
+	// 计入同一份 share 用量与 usage 记录，避免重复计费；重试结果更好才替换。
+	if txt := openaiContentText(raw); g.shouldPJRetry(prov.Name(), txt) {
+		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
+			logx.Infof("gateway", "破甲 failover：chat(%s) 回复被判拒答，换策略 %s 重试", model, stronger)
+			retryBody := pj.ApplyStrategy(stronger, prePJ)
+			retrySink := NewAggregateSink(outModel)
+			retryRec := &usageRecorder{inner: retrySink}
+			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
+				if raw2, perr2 := retrySink.Result(); perr2 == nil {
+					g.logUsage(r, model, prov.Name(), start, retryRec, nil)
+					if txt2 := openaiContentText(raw2); txt2 != "" && !pj.LooksRefused(txt2) {
+						raw = raw2
+						logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
+					} else {
+						logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+					}
+				}
+			} else {
+				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	_, _ = w.Write(raw)
 	logx.Infof("gateway", "chat(%s) 完成 %.1fs", model, time.Since(start).Seconds())
+}
+
+// pjEffectiveStrategy 当前请求实际会用的破甲策略（auto 按模型记忆展开；拿不到记忆时给 ""，
+// pjNextStrategy 会把 "" 当未知策略直接上最强）。
+func (g *Gateway) pjEffectiveStrategy(rawModel string) string {
+	if g.cfg == nil {
+		return ""
+	}
+	if g.cfg.PJMode == "auto" {
+		if s, ok := g.pjAutoPick(rawModel); ok {
+			return s
+		}
+		return ""
+	}
+	return g.cfg.PJMode
 }
 
 func asPerr(err error) *provider.Error {
@@ -733,6 +877,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	sink := NewAnthropicAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	openaiReq = g.optimizeReq(model, openaiReq, rec)
+	prePJ := openaiReq // failover 重试底稿：优化后、破甲注入前
 	openaiReq = g.applyPJModel(prov.Name(), bare, model, openaiReq)
 	if err := g.pool.Chat(ctx, model, openaiReq, rec); err != nil {
 		if shareID != "" {
@@ -754,9 +899,51 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		writeAnthropicError(w, mapClientStatus(perr), "api_error", perr.Msg)
 		return
 	}
+	// 破甲 failover（Anthropic 形状）：拒答时用最强策略在底稿上重打一次，结果更好才替换
+	if txt := anthropicRespText(raw); g.shouldPJRetry(prov.Name(), txt) {
+		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
+			logx.Infof("gateway", "破甲 failover：messages(%s) 回复被判拒答，换策略 %s 重试", model, stronger)
+			retryBody := pj.ApplyStrategy(stronger, prePJ)
+			retrySink := NewAnthropicAggregateSink(outModel)
+			retryRec := &usageRecorder{inner: retrySink}
+			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
+				if raw2, perr2 := retrySink.Result(); perr2 == nil {
+					g.logUsage(r, model, prov.Name(), start, retryRec, nil)
+					if txt2 := anthropicRespText(raw2); txt2 != "" && !pj.LooksRefused(txt2) {
+						raw = raw2
+						logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
+					} else {
+						logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+					}
+				}
+			} else {
+				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(raw)
 	logx.Infof("gateway", "messages(%s) 完成 %.1fs", model, time.Since(start).Seconds())
+}
+
+// anthropicRespText 从 Anthropic 非流式响应 JSON 里取全部 text 块拼成文本。
+func anthropicRespText(raw []byte) string {
+	var resp struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &resp) != nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, b := range resp.Content {
+		if b.Type == "text" {
+			sb.WriteString(b.Text)
+		}
+	}
+	return sb.String()
 }
 
 func (g *Gateway) countTokens(w http.ResponseWriter, r *http.Request) {

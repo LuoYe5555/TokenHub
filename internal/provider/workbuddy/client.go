@@ -433,7 +433,13 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 	}
-	if _, err := httpx.DoJSON(ctx, "POST", s.BillingBase+s.BillingPath+"/daily-checkin", h, map[string]any{}, &out, 30*time.Second); err != nil {
+	st, err := httpx.DoJSON(ctx, "POST", s.BillingBase+s.BillingPath+"/daily-checkin", h, map[string]any{}, &out, 30*time.Second)
+	if st >= 400 {
+		// 网关层拒绝（401/403 等）返回的是 HTML，必须按状态码分类，
+		// 否则调度器拿到的是裸 decode 错误，无法识别为凭据失效去恢复。
+		return false, "", provider.ClassifyBody(st, nil)
+	}
+	if err != nil {
 		return false, "", err
 	}
 	if out.Code == 0 {

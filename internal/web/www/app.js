@@ -35,6 +35,7 @@ const I18N = {
     api_title: 'API 接口', api_sub: 'OpenAI / Anthropic 兼容端点与接入示例',
     api_compat: '兼容端点：POST /v1/chat/completions（OpenAI）、POST /v1/messages（Anthropic）、GET /v1/models。鉴权方式：Authorization: Bearer <API Key>',
     api_models: '可用模型', reload: '刷新',
+    models_search: '搜索模型…', models_total: '共 {x} 个模型', models_copy: '点击复制',
     lan_label: '局域网分享地址（同一 WiFi 下的人可直接调用）',
     lan_hint_on: '把这个地址 + 下面的 API Key 发给对方，在他的客户端里填上即可调用。⚠️ 对方消耗的是你的账号额度，请只分享给信任的人。',
     lan_hint_off: '当前监听地址为 127.0.0.1，仅本机可用。想给别人调用：到「设置」把监听地址改为 0.0.0.0 保存并重启程序，Windows 防火墙首次弹窗时点「允许访问」。',
@@ -180,16 +181,19 @@ const I18N = {
     set_opt_dedup: 'Token 优化：重复内容折叠', set_opt_dedup_d: '同一次对话里完全相同的大段内容（重复读文件/重复命令输出）只保留最新一份，旧的出现折叠成一行标记；完整内容仍在上下文，不影响效果',
     set_opt_neardup: 'Token 优化：近重复折叠（深度）', set_opt_neardup_d: '同一工具前后调用结果 ≥90% 行相同时只留最新一份（如改一行后重读文件、换参数重读同一份大文件），旧的折叠成标记；比"重复内容折叠"多救回一倍以上 token，模型以最新结果为准',
     set_accel: '网络加速（本地加速器）', set_accel_d: 'PAC 选择性加速：仅 WorkBuddy 国际站、GitHub 等名单域名走本地加速代理（DNS 优选 + 多 IP 连接竞速，只中继不解密不装证书），国内网站与内网全部直连不受影响。已兼容其他加速器：开启前自动备份你的代理/PAC 设置（Watt Toolkit、Clash 等）并串联保留，关闭时一键还原',
-    set_pj: '破甲', set_pj_d: '把破甲策略注入发往上游的请求：对所有提供商（WorkBuddy / Trae / ZCode / Qwen / Ollama）都可使用。前置段类策略（armor_scope / operator_priority）写进 system，一次设置长期生效；模板类（3_liner / antigpt / betterdan / aim）套在最后一轮用户消息上；也可选「前置段+模板」组合。「自动」= 每个模型首次请求时按固定探测句逐策略试一遍，第一个能正常作答的记住（data/pj_auto.json），之后直接用。不保证一定成功——效果因模型和上游而异。',
+    set_pj: '破甲', set_pj_d: '把破甲策略注入发往上游的请求：对所有提供商（WorkBuddy / Trae / ZCode / Qwen / Ollama）都可使用。前置段类策略（armor_max / armor_crack / armor_re / armor_scope / operator_priority）写进 system，一次设置长期生效；模板类（3_liner / antigpt / betterdan / aim / evil_confident）套在最后一轮用户消息上；也可选「前置段+模板」组合。「自动」= 每个模型首次请求时按固定探测句逐策略试一遍，第一个能正常作答的记住（data/pj_auto.json），之后直接用。注入超出预算时自动降档（完整 → 精简 → 只留最强前置段）。不保证一定成功——效果因模型和上游而异。',
     set_pj_on: '启用破甲', set_pj_strategy: '破甲策略', set_pj_scope: '生效范围',
     set_pj_scope_all: '所有提供商（默认）', set_pj_scope_ollama: '仅本机 Ollama（旧行为）',
+    set_pj_lean: '精简档（省 token）', set_pj_lean_d: '前置段注入精简版（成本约 1/3）；注入总字符超过预算时也会自动降到这一档。精简版覆盖同样的行为约束，细节略少。',
+    set_pj_budget: '注入预算（字符）', set_pj_budget_d: '前置段+模板的总字符上限，超出自动降档；0 恢复默认 6000。',
+    set_pj_compact: '重复段折叠', set_pj_compact_d: '客户端回传的历史里出现重复破甲段时折叠成短标记，只留开头一份（默认开）。',
     set_pj_reset: '清空自动记忆', set_pj_reset_ok: '自动记忆已清空，下次请求会重新探测',
     set_pj_status: '当前状态', set_pj_st_on: '已启用', set_pj_st_off: '已关闭', set_pj_st_noop: '已开启但策略为 off，实际不注入',
     set_pj_st_models: '自动记忆', set_pj_st_none: '暂无记录',
     set_reqdump: '请求快照（诊断）', set_reqdump_d: '开启后把客户端发来的原始请求落盘到 data/reqdump（只留最近 8 份），日志会打印每次请求的工具数量与名称。用于诊断「模型说找不到工具」这类客户端侧问题，日常使用保持关闭',
     set_auto_update: '自动更新', set_auto_update_d: '每 6 小时检查 GitHub 最新 release，发现新版本自动下载替换并重启（构建版本号一致则跳过）',
     upd_check: '检查更新', upd_checking: '检查中…', upd_cur: '当前版本', upd_latest: '最新', upd_state_up_to_date: '已是最新', upd_state_updated: '已下载更新，即将重启', upd_state_failed: '失败', upd_state_pending_restart: '待重启生效', upd_none: '尚未检查',
-    set_pj_d: '默认开启，对所有提供商生效。前置段策略（armor_scope / operator_priority）写进 system 长期生效；模板类（3_liner / antigpt / betterdan / aim）套在最后一轮用户消息上；也可选「前置段+模板」组合。选「自动」时按模型逐个探测并记忆结果（data/pj_auto.json）。效果因模型和上游而异。',
+    set_pj_d: '默认开启，对所有提供商生效。前置段策略写进 system 长期生效：armor_max（终极组合）> armor_crack（软件保护研究：keygen/补丁/DRM/资源检索）> armor_re（逆向工程强化）> armor_scope（基础作用域）> operator_priority（精简优先）；模板类（3_liner / antigpt / betterdan / aim / evil_confident）套在最后一轮用户消息上；也可选「前置段+模板」组合。选「自动」时按模型逐个探测并记忆结果（data/pj_auto.json），探测顺序按强度从强到弱。非流式请求遇拒答自动换最强策略重试一次（failover）。精简档与注入预算可控制 token 成本。效果因模型和上游而异。',
     set_pj_off: '关闭',
     set_pj_auto: '自动（按模型探测模板）',
     us_saved: 'Token 优化已节省', us_saved_tip: '{n}的网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
@@ -239,6 +243,7 @@ const I18N = {
     api_title: 'API', api_sub: 'OpenAI / Anthropic compatible endpoints & examples',
     api_compat: 'Endpoints: POST /v1/chat/completions (OpenAI), POST /v1/messages (Anthropic), GET /v1/models. Auth: Authorization: Bearer <API Key>',
     api_models: 'Models', reload: 'Reload',
+    models_search: 'Search models…', models_total: '{x} models in total', models_copy: 'click to copy',
     lan_label: 'LAN share address (reachable by others on the same network)',
     lan_hint_on: 'Send this address plus the API Key below to the other person. Warning: they will consume YOUR account quota — share only with people you trust.',
     lan_hint_off: 'Currently listening on 127.0.0.1 (local only). To let others call the API: set Listen host to 0.0.0.0 in Settings, save and restart, then allow it through the Windows firewall prompt.',
@@ -388,9 +393,12 @@ const I18N = {
     set_opt_neardup: 'Token saver: near-duplicate folding (deep)', set_opt_neardup_d: 'When consecutive results of the same tool share ≥90% identical lines (e.g. re-reading a file after a one-line edit), older copies are folded into a marker; recovers far more tokens than exact-duplicate folding. The model uses the newest result',
     set_accel: 'Network accelerator (local)', set_accel_d: 'Selective PAC acceleration: only listed domains (WorkBuddy international, GitHub, etc.) go through the local accelerator proxy (DNS optimization + racing TCP connections, relay only, no decryption/certificates); domestic sites and intranet stay direct and untouched. Compatible with other accelerators: your existing proxy/PAC settings (Watt Toolkit, Clash, etc.) are backed up and chained, restored on turn-off',
     set_pj: 'Armor-piercing (prompt injection)',
-    set_pj_d: 'Injects the selected strategy into every upstream request, for ALL providers (WorkBuddy / Trae / ZCode / Qwen / Ollama). Front-section strategies (armor_scope / operator_priority) go into the system prompt and stay active; template strategies (3_liner / antigpt / betterdan / aim) wrap the last user message; combined "front+template" is also available. "Auto" probes each model once with a fixed probe sentence, remembers the first strategy that answers normally (data/pj_auto.json) and reuses it. Results vary by model and upstream.',
+    set_pj_d: 'Injects the selected strategy into every upstream request, for ALL providers. Front strategies go into the system prompt and stay active: armor_max (max combo) > armor_crack (software-protection research: keygen/patch/DRM/ sourcing) > armor_re (reverse-engineering hardened) > armor_scope (base scope) > operator_priority (lean). Template strategies (3_liner / antigpt / betterdan / aim / evil_confident) wrap the last user message; combined "front+template" is also available. "Auto" probes each model once, trying strategies strongest-first, and remembers the winner (data/pj_auto.json). Non-stream replies judged as refusals are retried once with the strongest strategy (failover). Lean mode and the injection budget control token cost. Results vary by model and upstream.',
     set_pj_on: 'Enable armor-piercing', set_pj_strategy: 'Strategy', set_pj_scope: 'Scope',
     set_pj_scope_all: 'All providers (default)', set_pj_scope_ollama: 'Local Ollama only (legacy)',
+    set_pj_lean: 'Lean mode (save tokens)', set_pj_lean_d: 'Fronts inject their lean variant (≈1/3 cost); over-budget injections also degrade to this tier automatically. Same behavioral constraints, fewer details.',
+    set_pj_budget: 'Injection budget (chars)', set_pj_budget_d: 'Total character cap for front+template; over-budget injections degrade tier by tier. 0 restores the default 6000.',
+    set_pj_compact: 'Fold duplicate fronts', set_pj_compact_d: 'Fold repeated armor segments in client-returned history into a short marker, keeping only the first copy (default on).',
     set_pj_reset: 'Clear auto memory', set_pj_reset_ok: 'Auto memory cleared; the next request will re-probe',
     set_pj_status: 'Status', set_pj_st_on: 'Enabled', set_pj_st_off: 'Disabled', set_pj_st_noop: 'Enabled but strategy is off — nothing is injected',
     set_pj_st_models: 'Auto memory', set_pj_st_none: 'No records yet',
@@ -1706,42 +1714,63 @@ async function renderModels(cached) {
   const all = modelCache || {};
   let html = '';
   let any = false;
+  let total = 0;
   for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
     const list = all[name] || [];
     if (!list.length) continue;
     any = true;
+    total += list.length;
     const meta = providerMeta(name);
-    const gid = 'mg-' + name;
     const open = !!modelGroupOpen[name];
     const chips = list.map(m =>
-      `<span class="chip" title="${esc(meta.label + (m.name ? ' · ' + m.name : ''))}"><b>${esc(m.id)}</b></span>`
+      `<span class="chip mchip" title="${esc(meta.label + (m.name ? ' · ' + m.name : ''))} · ${t('models_copy')}" data-mmodel="${esc(m.id)}"><b>${esc(m.id)}</b></span>`
     ).join('');
     html += `
-      <div style="margin-bottom:4px">
-        <div data-mtoggle="${name}" style="display:flex;align-items:center;gap:8px;padding:7px 2px;cursor:pointer;user-select:none">
-          <img class="pico" src="${meta.icon}" alt=""> <b style="font-size:13px">${esc(meta.label)}</b>
+      <div class="mgroup${open ? ' open' : ''}" data-mgroup="${name}">
+        <div class="mgroup-head" data-mtoggle="${name}">
+          <img class="pico" src="${meta.icon}" alt=""> <b>${esc(meta.label)}</b>
           <span class="badge">${list.length}</span>
           <span style="flex:1"></span>
-          <span class="mtri" style="display:inline-block;font-size:10px;opacity:.55;transition:transform .15s;line-height:1;transform:rotate(${open ? '180deg' : '0deg'})">▼</span>
+          <span class="mtri">▼</span>
         </div>
-        <div id="${gid}" class="chips" style="display:${open ? 'flex' : 'none'};margin-top:2px">${chips}</div>
+        <div class="mgroup-body">${chips}</div>
       </div>`;
   }
-  box.innerHTML = any ? html : `<span class="empty">${t('no_quota')}</span>`;
+  box.innerHTML = any
+    ? `<div class="mtoolbar"><input type="text" id="modelSearch" class="msearch" placeholder="${esc(t('models_search'))}" autocomplete="off" spellcheck="false"><span class="mcount">${t('models_total').replace('{x}', total)}</span></div>${html}`
+    : `<span class="empty">${t('no_quota')}</span>`;
   renderExamples();
 }
 $('#modelChips').addEventListener('click', e => {
+  const chip = e.target.closest('.mchip');
+  if (chip) { copyText(chip.dataset.mmodel); return; }
   const head = e.target.closest('[data-mtoggle]');
   if (!head) return;
-  const name = head.dataset.mtoggle;
-  const body = document.getElementById('mg-' + name);
-  if (!body) return;
-  const open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : 'flex';
-  modelGroupOpen[name] = !open;
+  const grp = head.closest('.mgroup');
+  if (!grp) return;
+  const open = grp.classList.toggle('open');
+  modelGroupOpen[grp.dataset.mgroup] = open;
   saveModelGroups();
-  const tri = head.querySelector('.mtri');
-  if (tri) tri.style.transform = `rotate(${!open ? '180deg' : '0deg'})`;
+});
+$('#modelChips').addEventListener('input', e => {
+  if (e.target.id !== 'modelSearch') return;
+  const q = e.target.value.trim().toLowerCase();
+  e.currentTarget.querySelectorAll('.mgroup').forEach(grp => {
+    if (!q) {
+      grp.style.display = '';
+      grp.querySelectorAll('.mchip').forEach(c => { c.style.display = ''; });
+      grp.classList.toggle('open', !!modelGroupOpen[grp.dataset.mgroup]);
+      return;
+    }
+    let hits = 0;
+    grp.querySelectorAll('.mchip').forEach(c => {
+      const hit = (c.dataset.mmodel || '').toLowerCase().includes(q);
+      c.style.display = hit ? '' : 'none';
+      if (hit) hits++;
+    });
+    grp.style.display = hits ? '' : 'none';
+    grp.classList.toggle('open', hits > 0);
+  });
 });
 $('#btnReloadModels').addEventListener('click', () => { modelCache = null; renderModels(); });
 
@@ -1808,6 +1837,9 @@ function renderSettings() {
     settingRow(t('set_reqdump'), t('set_reqdump_d'), `<label class="switch"><input type="checkbox" id="sReqDump" ${c.reqDump ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_pj'), t('set_pj_d'), `<label class="switch"><input type="checkbox" id="sPJ" ${c.pjEnabled !== false ? 'checked' : ''}><i></i></label><select id="sPJMode" class="grow">${pjOptions(c.pjMode)}</select>`, 'wide'),
     settingRow(t('set_pj_scope'), '', `<select id="sPJScope">${['all', 'ollama'].map(v => `<option value="${v}" ${(c.pjScope || 'all') === v ? 'selected' : ''}>${v === 'ollama' ? t('set_pj_scope_ollama') : t('set_pj_scope_all')}</option>`).join('')}</select>`),
+    settingRow(t('set_pj_lean'), t('set_pj_lean_d'), `<label class="switch"><input type="checkbox" id="sPJLean" ${c.pjLean ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_pj_budget'), t('set_pj_budget_d'), `<input type="number" id="sPJBudget" value="${c.pjBudget || 6000}">`),
+    settingRow(t('set_pj_compact'), t('set_pj_compact_d'), `<label class="switch"><input type="checkbox" id="sPJCompact" ${(c.pjCompact !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_pj_status'), `<span id="pjStat">…</span>`, `<button class="sm" id="btnPJReset">${t('set_pj_reset')}</button>`, 'wide'),
   ].join('');
   $('#sRegen').addEventListener('click', () => {
@@ -1820,14 +1852,17 @@ function renderSettings() {
 }
 
 // 破甲策略下拉：前置段优先（长期生效），再是模板，最后是「前置段+模板」组合与 auto。
-const PJ_FRONTS = ['armor_scope', 'operator_priority'];
-const PJ_TPL = ['3_liner', 'antigpt', 'betterdan', 'aim'];
+// 前置段按强度从高到低：armor_max（终极）> armor_crack（软件保护研究）> armor_re（逆向）> armor_scope（基础）> operator_priority（精简）
+const PJ_FRONTS = ['armor_max', 'armor_crack', 'armor_re', 'armor_scope', 'operator_priority'];
+const PJ_FRONT_LABELS = { armor_max: '终极组合', armor_crack: '软件保护研究', armor_re: '逆向强化', armor_scope: '基础作用域', operator_priority: '精简优先' };
+const PJ_TPL = ['3_liner', 'antigpt', 'betterdan', 'aim', 'evil_confident'];
 function pjOptions(cur) {
   const v = cur || 'armor_scope';
   const opts = [['off', t('set_pj_off')], ['auto', t('set_pj_auto')]];
-  PJ_FRONTS.forEach(f => opts.push([f, f + ' · 前置段']));
+  PJ_FRONTS.forEach(f => opts.push([f, f + ' · ' + (PJ_FRONT_LABELS[f] || '前置段')]));
   PJ_TPL.forEach(x => opts.push([x, x + ' · 模板']));
-  PJ_FRONTS.forEach(f => PJ_TPL.forEach(x => opts.push([f + '+' + x, f + ' + ' + x])));
+  // 组合只列强前置段（armor_max/armor_crack/armor_re）×模板，避免下拉过长；其余组合 auto 会自动试到
+  ['armor_max', 'armor_crack', 'armor_re'].forEach(f => PJ_TPL.forEach(x => opts.push([f + '+' + x, f + ' + ' + x])));
   if (!opts.some(o => o[0] === v)) opts.push([v, v]);
   return opts.map(([val, label]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${label}</option>`).join('');
 }
@@ -1928,6 +1963,9 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     pjEnabled: $('#sPJ').checked,
     pjMode: $('#sPJMode').value,
     pjScope: $('#sPJScope').value,
+    pjLean: $('#sPJLean').checked,
+    pjBudget: Math.max(0, parseInt($('#sPJBudget').value, 10) || 0),
+    pjCompact: $('#sPJCompact').checked,
     reqDump: $('#sReqDump').checked,
     autoUpdate: $('#sAutoUpdate').checked,
   };

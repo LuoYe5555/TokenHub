@@ -1,0 +1,8 @@
+/*!
+ * Determine if an object is a Buffer
+ *
+ * @author   Feross Aboukhadijeh <https://feross.org>
+ * @license  MIT
+ */
+
+/*! @sentry/node 7.112.0 (6dc447d) | https://github.com/getsentry/sentry-javascript */

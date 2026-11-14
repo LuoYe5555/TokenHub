@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -81,6 +82,29 @@ func (s *Scheduler) Start(ctx context.Context) {
 
 func dayKey(t time.Time) string { return t.Format("2006-01-02") }
 
+// isAuthFailure 判断签到错误是否为凭据失效（401 等），值得尝试恢复凭据后重试。
+func isAuthFailure(err error) bool {
+	var pe *provider.Error
+	if errors.As(err, &pe) {
+		return pe.Kind == provider.KindAuth
+	}
+	return false
+}
+
+// persistCredentials 把恢复后的凭据落库（RefreshAccount 原地改的是池内副本）。
+func (s *Scheduler) persistCredentials(acct *store.Account) {
+	_ = s.store.Mutate(acct.ID, func(a *store.Account) {
+		a.AccessToken = acct.AccessToken
+		a.RefreshToken = acct.RefreshToken
+		a.ExpiresAt = acct.ExpiresAt
+		a.LastRefresh = acct.LastRefresh
+		a.Domain = acct.Domain
+		a.EnterpriseID = acct.EnterpriseID
+		a.Dead = false
+		a.DeadReason = ""
+	})
+}
+
 // RunCheckinPass 签到/领取一轮。force=true 忽略去重（面板手动触发）。
 func (s *Scheduler) RunCheckinPass(ctx context.Context, force bool) {
 	today := dayKey(time.Now())
@@ -127,6 +151,15 @@ func (s *Scheduler) RunCheckinPass(ctx context.Context, force bool) {
 		}
 		checked++
 		already, msg, err := p.Checkin(ctx, acct)
+		if err != nil && isAuthFailure(err) {
+			// 凭据失效（如客户端轮换了 token）：先恢复凭据再重试一次签到。
+			if rerr := s.pool.RefreshAccount(ctx, acct); rerr == nil {
+				s.persistCredentials(acct)
+				already, msg, err = p.Checkin(ctx, acct)
+			} else {
+				logx.Warnf(string(acct.Provider), "账号 %s 凭据恢复失败: %v", acct.DisplayedName(), rerr)
+			}
+		}
 		// Checkin 内部可能补了 deviceId（trae 9004 根因），无论成败都落库
 		if did := acct.ExtraGet(store.ExtraTraeDeviceID); did != "" {
 			_ = s.store.Mutate(acct.ID, func(a *store.Account) { a.ExtraSet(store.ExtraTraeDeviceID, did) })

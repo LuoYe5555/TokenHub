@@ -100,8 +100,23 @@ func TestApplyStrategy(t *testing.T) {
 
 func TestStrategiesOrder(t *testing.T) {
 	st := Strategies()
-	if len(st) == 0 || st[0] != Fronts[0].ID {
-		t.Fatalf("策略清单应以第一个前置段开头: %v", st)
+	if len(st) == 0 {
+		t.Fatal("策略清单为空")
+	}
+	// 排序原则：强策略在前（终极段 > 逆向段 > 基础段 > 纯模板 > 纯前置）
+	rank := func(id string) int {
+		for i, s := range st {
+			if s == id {
+				return i
+			}
+		}
+		return -1
+	}
+	if rank("armor_max") > rank("armor_re") || rank("armor_re") > rank("armor_scope") {
+		t.Fatalf("强段应排在前面: armor_max=%d armor_re=%d armor_scope=%d", rank("armor_max"), rank("armor_re"), rank("armor_scope"))
+	}
+	if rank("armor_max+aim") >= rank("armor_max") || rank("armor_max+aim") >= rank("armor_re") {
+		t.Fatalf("组合应排在裸段前、但弱于更强的裸段: armor_max=%d combo=%d armor_re=%d", rank("armor_max"), rank("armor_max+aim"), rank("armor_re"))
 	}
 	found := false
 	for _, s := range st {

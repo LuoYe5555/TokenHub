@@ -1,0 +1,12 @@
+<!DOCTYPE html><html><head><meta charset=utf-8><title></title><link href=./renderer.css rel=stylesheet><link href=../message-box-renderer/renderer.css rel=stylesheet></head><body data-theme=glacc><div id=app></div><script src=../vendor.js></script><script>let path = require('path');
+    window.__rootDir = path.resolve(process.execPath, '../resources/app').replace(/\\/g, '/');
+    window.__profilesDir = path.resolve(__rootDir, '../../../profiles').replace(/\\/g, '/');
+    window.__packageName = 'glacc';</script><script src=../message-box-renderer/renderer.js></script></body><style>body {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      /**设置body背景也是透明的*/
+      background-color: transparent;
+      /**为了显示阴影的模糊状态*/
+      padding: 10px 10px 30px;
+  }</style></html>

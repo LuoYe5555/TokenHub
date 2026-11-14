@@ -278,6 +278,9 @@ func (p *Pool) RefreshAccount(ctx context.Context, acct *store.Account) error {
 			return nil
 		} else if rerr == nil {
 			rerr = serr
+		} else {
+			// 两个都失败时，本机同步的错误更可操作（提示打开客户端等），一并透出
+			rerr = fmt.Errorf("%v；本机同步也不可用: %v", rerr, serr)
 		}
 	}
 	if rerr == nil {

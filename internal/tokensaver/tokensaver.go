@@ -42,22 +42,25 @@ import (
 
 // Options 优化开关。MinChars 为重复折叠的最小内容长度（字符）。
 type Options struct {
-	Dedup       bool // 折叠会话内重复内容
-	CompactJSON bool // JSON 紧凑化
-	NearDup     bool // 近重复工具结果折叠（同一工具、内容高度相似的旧结果）
-	MinChars    int  // 默认 500
+	Dedup        bool // 折叠会话内重复内容
+	CompactJSON  bool // JSON 紧凑化
+	NearDup      bool // 近重复工具结果折叠（同一工具、内容高度相似的旧结果）
+	MinChars     int  // 默认 500
+	DupSystem    bool // 折叠重复的 system / developer 消息（破甲段反复注入的场景）
+	KeepFirstSys int  // DupSystem 时保留开头几条 system 原样（默认 1）
 }
 
 // Result 一次优化的统计。
 type Result struct {
-	SavedChars  int64 // 减少的字符数
-	SavedTokens int64 // 按 EstTokens 口径估算的节省 token
-	Deduped     int   // 折叠的重复消息条数
-	Compacted   int   // 紧凑化的 JSON 条数
-	Staled      int   // 淘汰的过期工具结果条数
-	ImagesDedup int   // 折叠的重复图片张数
-	Stripped    int   // 剥离的 reasoning 字段条数
-	NearDuped   int   // 折叠的近重复工具结果条数
+	SavedChars   int64 // 减少的字符数
+	SavedTokens  int64 // 按 EstTokens 口径估算的节省 token
+	Deduped      int   // 折叠的重复消息条数
+	Compacted    int   // 紧凑化的 JSON 条数
+	Staled       int   // 淘汰的过期工具结果条数
+	ImagesDedup  int   // 折叠的重复图片张数
+	Stripped     int   // 剥离的 reasoning 字段条数
+	NearDuped    int   // 折叠的近重复工具结果条数
+	DupSysFolded int   // 折叠的重复 system 段条数（破甲段回传场景）
 }
 
 // dedupMark 替换重复内容用的短标记（模型可读：告知完整内容仍在上下文）。
@@ -97,7 +100,7 @@ func Optimize(body []byte, opt Options) ([]byte, Result) {
 	if opt.MinChars <= 0 {
 		opt.MinChars = 500
 	}
-	if !opt.Dedup && !opt.CompactJSON {
+	if !opt.Dedup && !opt.CompactJSON && !opt.DupSystem {
 		return body, Result{}
 	}
 	// UseNumber 保证数字字段逐字节往返（大整数 ID 不被 float64 破坏）
@@ -113,6 +116,14 @@ func Optimize(body []byte, opt Options) ([]byte, Result) {
 	}
 
 	var res Result
+
+	// ── Pass 0: 重复 system 折叠（破甲注入专属） ──
+	// 网关每轮把破甲段写进 system，客户端把带段的历史整包回传时，
+	// 长度动辄一两千 token 的段会在上下文里出现 N 份。按内容精确去重：
+	// 只保留开头 KeepFirstSys 条原样，其余相同内容换成一句短标记。
+	if opt.DupSystem {
+		foldDupSystem(msgs, opt, &res)
+	}
 
 	// ── Pass 1: JSON 紧凑化 ──
 	if opt.CompactJSON {
@@ -214,6 +225,77 @@ func Optimize(body []byte, opt Options) ([]byte, Result) {
 		res.SavedTokens = 0
 	}
 	return out, res
+}
+
+// ── 注入成本工具（pj 层与网关共用） ──
+
+// FrontTokenCost 估算一段前置文本每轮注入的 token 成本（EstTokens 口径）。
+// 面板显示「精简 vs 完整」成本差、网关日志显示注入成本都用它。
+func FrontTokenCost(s string) int64 { return EstTokens(s) }
+
+// dupSysMark 替换重复 system 的短标记。
+const dupSysMark = "[TokenHub 已折叠重复系统段：本段与上下文开头的同名系统指令完全相同，请按开头那份执行]"
+
+// foldDupSystem 折叠重复的 system / developer 消息。
+// 破甲网关每轮注入的段（armor_scope 等）会随客户端回传的历史在上下文里出现多份，
+// 全部保留是纯浪费：模型只需开头一份 + 「后面那些是同一份」的认知即可。
+// 保留开头 KeepFirstSys 条原样（与 provider 侧前缀缓存友好），其余按精确内容去重。
+func foldDupSystem(msgs []any, opt Options, res *Result) {
+	keep := opt.KeepFirstSys
+	if keep <= 0 {
+		keep = 1
+	}
+	type hit struct {
+		m    map[string]any
+		text string
+	}
+	sysCount := 0
+	seen := map[string][]hit{}
+	for _, mv := range msgs {
+		m, ok := mv.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role != "system" && role != "developer" {
+			continue
+		}
+		txt, _, ok := contentText(m)
+		if !ok || utf8.RuneCountInString(txt) < 64 || txt == dupSysMark {
+			sysCount++
+			continue // 过短 / 已折叠过的不处理
+		}
+		// 与开头 keep 条内容相同的也不折叠——客户端没有回传开头那份时，
+		// 这就是唯一的完整版本（前缀缓存语义照旧）。
+		if sysCount < keep {
+			sum := sha256.Sum256([]byte(txt))
+			seen[string(sum[:])] = nil // 记录开头段指纹，后续同内容一律折叠
+			sysCount++
+			continue
+		}
+		sysCount++
+		sum := sha256.Sum256([]byte(txt))
+		key := string(sum[:])
+		if lst, dupOfHead := seen[key]; dupOfHead && lst == nil {
+			// 与开头保留段内容相同：直接折叠
+			setContent(m, -1, dupSysMark)
+			res.DupSysFolded++
+			res.SavedChars += int64(len(txt) - len(dupSysMark))
+			continue
+		}
+		seen[key] = append(seen[key], hit{m: m, text: txt})
+	}
+	for _, list := range seen {
+		if len(list) < 2 {
+			continue // 只出现过一次的段落不算重复（历史段被改写过的情形）
+		}
+		// 内容相同的多条：保留一条原样，其余折叠
+		for _, h := range list[:len(list)-1] {
+			setContent(h.m, -1, dupSysMark)
+			res.DupSysFolded++
+			res.SavedChars += int64(len(h.text) - len(dupSysMark))
+		}
+	}
 }
 
 // normArgsKey 把工具参数规范化为稳定 key：合法 JSON 时解析后重序列化

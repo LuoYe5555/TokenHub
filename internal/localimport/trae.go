@@ -1,6 +1,7 @@
 package localimport
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	crand "crypto/rand"
@@ -261,6 +262,37 @@ func tcSeal(plain []byte) (string, error) {
 	mode.CryptBlocks(cipherText, padded)
 	out = append(out, cipherText...)
 	return base64.StdEncoding.EncodeToString(out), nil
+}
+
+// PatchAuthEnvelopeToken 用新的 token 对替换信封里的登录凭据，账号资料等其余字段原样保留。
+// 背景：账号池每日刷新会轮换 refreshToken，快照信封里的旧会话随即被服务端吊销，
+// 原样写回会被 IDE 启动时的 checkToken 直接判登出（2026-11-14 实测复现）。
+// 换成池现役 token 对则写入的会话是活的。
+func PatchAuthEnvelopeToken(b64, token, refreshToken string, expiredAtUnix int64) (string, error) {
+	body := tcDecryptBody(b64)
+	if body == nil {
+		return "", fmt.Errorf("信封解不开")
+	}
+	var m map[string]any
+	// UseNumber：userId 是 16 位大整数，普通 Unmarshal 变 float64 后重编码会丢精度成科学计数法
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	if dec.Decode(&m) != nil {
+		return "", fmt.Errorf("信封明文解析失败")
+	}
+	m["token"] = token
+	if refreshToken != "" {
+		m["refreshToken"] = refreshToken
+	}
+	if expiredAtUnix > 0 {
+		m["expiredAt"] = time.Unix(expiredAtUnix, 0).UTC().Format("2006-01-02T15:04:05.000Z")
+	}
+	m["tokenReleaseAt"] = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	out, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return tcSeal(out)
 }
 
 // SynthAuthEnvelope 用已知凭据合成 tc 登录信封（无原始信封的账号一键切换时兜底）。

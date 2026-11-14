@@ -75,6 +75,17 @@ func Apply(acct *store.Account) (string, error) {
 		//（池每日自动刷新 token，通常仍是新鲜的）。
 		authEnv = ""
 	}
+	// 池里存有 refreshToken 的账号：池每日刷新会轮换 refreshToken 并吊销快照里的旧会话，
+	// 原样写回必被 IDE 启动检查判登出（信封 token 的 JWT 有效期不看这个，快照永远"没过期"）。
+	// 用池现役 token 对重签信封，保证写回的会话是活的。
+	if authEnv != "" && acct.RefreshToken != "" && acct.AccessToken != "" &&
+		!(acct.ExpiresAt > 0 && acct.ExpiresAt < time.Now().Unix()+1800) {
+		if patched, err := localimport.PatchAuthEnvelopeToken(
+			authEnv, acct.AccessToken, acct.RefreshToken, acct.ExpiresAt); err == nil {
+			authEnv = patched
+		}
+		// 重签失败保留原信封兜底，行为与旧版一致
+	}
 	if authEnv == "" {
 		if acct.AccessToken == "" || (acct.ExpiresAt > 0 && acct.ExpiresAt < time.Now().Unix()+1800) {
 			return "", fmt.Errorf("账号登录信封已过期且 token 不可用（过期于 %s），请先在面板刷新该账号或重新「抓会话」",
