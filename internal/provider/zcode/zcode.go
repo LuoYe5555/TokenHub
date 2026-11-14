@@ -71,6 +71,9 @@ func appVersion() string {
 	return appVerCached
 }
 
+// AppVersion 本机 ZCode 客户端版本（注册表读取，兜底内置值；面板总览展示用）。
+func AppVersion() string { return appVersion() }
+
 func platform() string {
 	arch := "x64"
 	if runtime.GOARCH == "arm64" {
@@ -1018,12 +1021,12 @@ func (p *Provider) RawQuotaSources(ctx context.Context, acct *store.Account) map
 // ── 模型 ──
 
 var seedModels = []provider.ModelInfo{
-	{ID: "glm-5.3"}, {ID: "glm-5.3-flash"}, {ID: "glm-5.2"}, {ID: "glm-5-turbo"}, {ID: "glm-5"},
-	{ID: "glm-4.7"}, {ID: "glm-4.7-flash"}, {ID: "glm-4.6"},
-	{ID: "deepseek-v4-pro"}, {ID: "deepseek-v4-flash"},
-	{ID: "kimi-k2.6"}, {ID: "kimi-k2.5"},
-	{ID: "qwen3.5-plus"}, {ID: "qwen3-max"},
-	{ID: "minimax-m3"},
+	{ID: "glm-5.3", Name: "GLM-5.3"}, {ID: "glm-5.3-flash", Name: "GLM-5.3-Flash"}, {ID: "glm-5.2", Name: "GLM-5.2"}, {ID: "glm-5-turbo", Name: "GLM-5-Turbo"}, {ID: "glm-5", Name: "GLM-5"},
+	{ID: "glm-4.7", Name: "GLM-4.7"}, {ID: "glm-4.7-flash", Name: "GLM-4.7-Flash"}, {ID: "glm-4.6", Name: "GLM-4.6"},
+	{ID: "deepseek-v4-pro", Name: "DeepSeek-V4-Pro"}, {ID: "deepseek-v4-flash", Name: "DeepSeek-V4-Flash"},
+	{ID: "kimi-k2.6", Name: "Kimi-K2.6"}, {ID: "kimi-k2.5", Name: "Kimi-K2.5"},
+	{ID: "qwen3.5-plus", Name: "Qwen3.5-Plus"}, {ID: "qwen3-max", Name: "Qwen3-Max"},
+	{ID: "minimax-m3", Name: "MiniMax-M3"},
 }
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }

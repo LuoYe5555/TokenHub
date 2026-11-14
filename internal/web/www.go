@@ -3,6 +3,7 @@ package web
 import (
 	"embed"
 	"net/http"
+	"strings"
 )
 
 //go:embed www/index.html
@@ -34,7 +35,14 @@ func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	ct := "image/png"
+	switch {
+	case strings.HasSuffix(name, ".svg"):
+		ct = "image/svg+xml"
+	case strings.HasSuffix(name, ".jpg") || strings.HasSuffix(name, ".jpeg"):
+		ct = "image/jpeg"
+	}
+	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "max-age=86400")
 	_, _ = w.Write(data)
 }

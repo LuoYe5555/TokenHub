@@ -25,6 +25,13 @@ type Pool struct {
 	providers  map[string]provider.Provider
 	rr         map[string]int // provider → 轮换游标
 	failStreak map[string]int // 账号 → 连续失败次数（内存级，重启归零；成功即清零）
+
+	// 模型聚合缓存：AllModels 每次都全量打上游（custom/ollama/free 动态发现），
+	// 面板每次切页、网关 /v1/models 每次调用都会触发。加 60s TTL，
+	// 手动「刷新」按钮用 InvalidateModels 绕过。
+	modelsMu    sync.Mutex
+	modelsCache map[string][]provider.ModelInfo
+	modelsAt    time.Time
 }
 
 func New(cfg *config.Config, st *store.Store) *Pool {
@@ -57,7 +64,7 @@ func (p *Pool) Providers() map[string]provider.Provider {
 }
 
 // shortAlias 模型前缀别名。
-var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom}
+var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom, "oc": store.POpencode}
 
 // customBySlug 按 slug 前缀找外部 API 账号（大小写不敏感；保留名不作为 slug）。
 func (p *Pool) customBySlug(slug string) *store.Account {
@@ -98,6 +105,35 @@ func (p *Pool) matchSlugPrefix(model string) string {
 	return ""
 }
 
+// canonicalModel 归一模型名，容忍客户端的大小写变形与显示名：
+// 精确 id → 忽略大小写 id → 忽略大小写显示名 → 都没命中时原样返回（保留未知模型透传）。
+func (p *Pool) canonicalModel(provName, model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || provName == "" {
+		return model
+	}
+	list := p.AllModels(context.Background())[provName]
+	if len(list) == 0 {
+		return model
+	}
+	for _, m := range list {
+		if m.ID == model {
+			return model
+		}
+	}
+	for _, m := range list {
+		if strings.EqualFold(m.ID, model) {
+			return m.ID
+		}
+	}
+	for _, m := range list {
+		if m.Name != "" && strings.EqualFold(m.Name, model) {
+			return m.ID
+		}
+	}
+	return model
+}
+
 // ResolveModel 解析 "provider:model" 前缀 / ModelRoutes / 默认提供商。
 // 兼容客户端自定义 slug 前缀（如 "custom-local:zcode:glm-5.3-flash"）：
 // 从左逐段认领已知提供商/别名，全部未知时剥掉前缀只留最后一段作为裸模型名。
@@ -107,19 +143,37 @@ func (p *Pool) ResolveModel(model string) (provider.Provider, string) {
 		for i := 0; i < len(segs)-1; i++ {
 			name := strings.ToLower(segs[i])
 			if pv := p.Provider(name); pv != nil {
-				return pv, strings.Join(segs[i+1:], ":")
+				return pv, p.canonicalModel(name, strings.Join(segs[i+1:], ":"))
 			}
 			if real, ok := shortAlias[name]; ok && p.Provider(real) != nil {
-				return p.Provider(real), strings.Join(segs[i+1:], ":")
+				return p.Provider(real), p.canonicalModel(real, strings.Join(segs[i+1:], ":"))
 			}
 			// 外部 API slug 前缀（如 "deepseek:deepseek-chat"）→ custom 提供商
 			if p.customBySlug(name) != nil {
-				return p.Provider(store.PCustom), strings.Join(segs[i+1:], ":")
+				return p.Provider(store.PCustom), p.canonicalModel(store.PCustom, strings.Join(segs[i+1:], ":"))
 			}
 		}
 	}
 	if name, ok := p.cfg.ModelRoutes[model]; ok && p.Provider(name) != nil {
-		return p.Provider(name), model
+		return p.Provider(name), p.canonicalModel(name, model)
+	}
+	// ModelRoutes 大小写不敏感兜底
+	if lower := strings.ToLower(model); lower != model {
+		for route, name := range p.cfg.ModelRoutes {
+			if strings.EqualFold(route, model) && p.Provider(name) != nil {
+				return p.Provider(name), p.canonicalModel(name, model)
+			}
+		}
+	}
+	// Kilo 免费池的模型 id 自带 ":"（如 nvidia/xxx:free、kilo-auto/free），
+	// 上面的逐段前缀认领接不住裸 id —— 在回落默认提供商之前按免费池清单认领，
+	// 避免这类模型被误路由到默认提供商。
+	for _, name := range []string{store.PFree, store.POpencode} {
+		if pv := p.Provider(name); pv != nil {
+			if hm, ok := pv.(interface{ HasModel(string) bool }); ok && hm.HasModel(model) {
+				return pv, p.canonicalModel(name, model)
+			}
+		}
 	}
 	def := p.cfg.DefaultProvider
 	if p.Provider(def) == nil {
@@ -134,7 +188,7 @@ func (p *Pool) ResolveModel(model string) (provider.Provider, string) {
 	if segs := strings.Split(model, ":"); len(segs) > 1 {
 		bare = segs[len(segs)-1]
 	}
-	return p.Provider(def), bare
+	return p.Provider(def), p.canonicalModel(def, bare)
 }
 
 // candidate 可用账号（enabled、未停用、未冷却）。
@@ -541,8 +595,32 @@ func (p *Pool) Status() []AccountStatus {
 	return out
 }
 
+// InvalidateModels 清空模型聚合缓存（面板「刷新」按钮用，强制重打上游）。
+func (p *Pool) InvalidateModels() {
+	p.modelsMu.Lock()
+	defer p.modelsMu.Unlock()
+	p.modelsCache = nil
+	p.modelsAt = time.Time{}
+}
+
 // AllModels 聚合所有启用提供商的模型列表（动态优先，静态兜底）。
+// 结果缓存 60 秒：面板切页与 /v1/models 高频调用不再反复打上游。
+// 返回的 map 会被调用方共享读取，调用方不得修改。
 func (p *Pool) AllModels(ctx context.Context) map[string][]provider.ModelInfo {
+	p.modelsMu.Lock()
+	defer p.modelsMu.Unlock()
+	if p.modelsCache != nil && time.Since(p.modelsAt) < modelsCacheTTL {
+		return p.modelsCache
+	}
+	out := p.computeAllModels(ctx)
+	p.modelsCache = out
+	p.modelsAt = time.Now()
+	return out
+}
+
+const modelsCacheTTL = 60 * time.Second
+
+func (p *Pool) computeAllModels(ctx context.Context) map[string][]provider.ModelInfo {
 	out := map[string][]provider.ModelInfo{}
 	for name, prov := range p.Providers() {
 		if pc := p.cfg.PC(name); !pc.Enabled {

@@ -24,7 +24,7 @@ const I18N = {
     usage_until: '到期', usage_req_unit: ' 次', usage_empty: '暂无调用记录',
     usage_reload: '刷新', usage_reloading: '刷新中…',
     usage_stats: '用量统计', us_7d: '近 7 日', us_30d: '近 30 日', us_all: '全部', us_days_fmt: '近 {n} 天', us_other: '其他', us_no_data: '暂无调用数据',
-    dash_title: '总览', dash_sub: '账号额度与接口状态一览',
+    dash_title: '总览', dash_sub: '账号额度与接口状态一览', client_version: '客户端版本',
     dash_refresh_quotas: '刷新全部额度', dash_checkin_all: '立即签到/领取',
     dash_refresh_tokens: '刷新全部token', refresh_tokens_busy: '正在刷新全部token…',
     refresh_tokens_ok: '全部刷新成功（{x} 个）', refresh_tokens_part: '刷新完成：成功 {x} 个，失败 {y} 个',
@@ -36,6 +36,8 @@ const I18N = {
     api_compat: '兼容端点：POST /v1/chat/completions（OpenAI）、POST /v1/messages（Anthropic）、GET /v1/models。鉴权方式：Authorization: Bearer <API Key>',
     api_models: '可用模型', reload: '刷新',
     models_search: '搜索模型…', models_total: '共 {x} 个模型', models_copy: '点击复制',
+    models_ctx: '上下文', models_think: '思考', models_vision: '图片', models_tools: '工具', models_credit_rate: '积分倍率',
+    models_out: '单次输出', models_rate: '倍速', models_status: '状态', models_name: '模型',
     lan_label: '局域网分享地址（同一 WiFi 下的人可直接调用）',
     lan_hint_on: '把这个地址 + 下面的 API Key 发给对方，在他的客户端里填上即可调用。⚠️ 对方消耗的是你的账号额度，请只分享给信任的人。',
     lan_hint_off: '当前监听地址为 127.0.0.1，仅本机可用。想给别人调用：到「设置」把监听地址改为 0.0.0.0 保存并重启程序，Windows 防火墙首次弹窗时点「允许访问」。',
@@ -63,7 +65,7 @@ const I18N = {
     share_title: '分享钥匙（发给别人的专用 Key）',
     share_hint: '每把钥匙可按提供商开关并设用量上限（按 token 计量；上限 0 = 不限）。WorkBuddy / Trae 的「积分」无法逐次读取，用 token 用量近似控制，建议设保守值。主 API Key 请勿外发，发这把专用钥匙即可。',
     share_create: '创建分享钥匙', share_name_ph: '名称（比如：给小明的）',
-    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限', share_limit_qw: 'tokens 上限', share_limit_ol: 'tokens 上限',
+    share_limit_wb: '积分上限', share_limit_trae: '积分上限', share_limit_zc: 'tokens 上限', share_limit_qw: 'tokens 上限', share_limit_ol: 'tokens 上限', share_limit_free: 'tokens 上限',
     share_models_ph: '允许模型（逗号分隔，留空=全部）',
     share_none: '还没有分享钥匙，在下方创建一把',
     share_used: '已用', share_times: '次',
@@ -74,6 +76,8 @@ const I18N = {
     save: '保存', cancel: '取消', close: '关闭', confirm: '确认',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode（智谱 GLM）',
     prov_qwen: '千问 Qwen（网页版）', prov_ollama: 'Ollama（本地模型）',
+    prov_free: 'Kilo（免费档）', free_hint: '免账号免 Key，直连 Kilo 公共网关的免费模型池；上游可能记录 prompt，勿发敏感内容',
+    prov_opencode: 'OpenCode（免费档）', oc_hint: '免账号免 Key，伪装官方客户端直连 opencode.ai 免费档；上游可能记录 prompt，勿发敏感内容',
     prov_custom: '外部 API（自定义）',
     custom_title: '接入外部 API', custom_edit_title: '编辑外部 API',
     custom_nick: '名称（显示在面板）', custom_nick_ph: '如：DeepSeek / 月之暗面 / 某中转站',
@@ -232,7 +236,7 @@ const I18N = {
     usage_until: 'until', usage_req_unit: ' req', usage_empty: 'No calls recorded',
     usage_reload: 'Refresh', usage_reloading: 'Refreshing…',
     usage_stats: 'Usage stats', us_7d: '7 days', us_30d: '30 days', us_all: 'All', us_days_fmt: 'last {n} days', us_other: 'Other', us_no_data: 'No calls yet',
-    dash_title: 'Dashboard', dash_sub: 'Account quotas and API status at a glance',
+    dash_title: 'Dashboard', dash_sub: 'Account quotas and API status at a glance', client_version: 'Client version',
     dash_refresh_quotas: 'Refresh quotas', dash_checkin_all: 'Check in / claim now',
     dash_refresh_tokens: 'Refresh all tokens', refresh_tokens_busy: 'Refreshing all tokens…',
     refresh_tokens_ok: 'All refreshed ({x})', refresh_tokens_part: 'Done: {x} ok, {y} failed',
@@ -244,6 +248,8 @@ const I18N = {
     api_compat: 'Endpoints: POST /v1/chat/completions (OpenAI), POST /v1/messages (Anthropic), GET /v1/models. Auth: Authorization: Bearer <API Key>',
     api_models: 'Models', reload: 'Reload',
     models_search: 'Search models…', models_total: '{x} models in total', models_copy: 'click to copy',
+    models_ctx: 'ctx', models_think: 'reasoning', models_vision: 'vision', models_tools: 'tools', models_credit_rate: 'credit rate',
+    models_out: 'max output', models_rate: 'rate', models_status: 'status', models_name: 'model',
     lan_label: 'LAN share address (reachable by others on the same network)',
     lan_hint_on: 'Send this address plus the API Key below to the other person. Warning: they will consume YOUR account quota — share only with people you trust.',
     lan_hint_off: 'Currently listening on 127.0.0.1 (local only). To let others call the API: set Listen host to 0.0.0.0 in Settings, save and restart, then allow it through the Windows firewall prompt.',
@@ -272,6 +278,7 @@ const I18N = {
     share_hint: 'Each key can toggle providers and cap usage (measured in tokens; 0 = unlimited). WorkBuddy / Trae points cannot be read per-request, so token usage is used as an approximation — set conservative limits. Never send out your main API Key; send a share key instead.',
     share_create: 'Create share key', share_name_ph: 'Name (e.g. for Alice)',
     share_limit_wb: 'points cap', share_limit_trae: 'points cap', share_limit_zc: 'tokens cap', share_limit_qw: 'tokens cap', share_limit_ol: 'tokens cap',
+    share_limit_free: 'tokens cap',
     share_models_ph: 'Allowed models (comma-separated, empty = all)',
     share_none: 'No share keys yet — create one below',
     share_used: 'Used', share_times: ' reqs',
@@ -282,6 +289,8 @@ const I18N = {
     save: 'Save', cancel: 'Cancel', close: 'Close', confirm: 'OK',
     prov_workbuddy: 'WorkBuddy / CodeBuddy', prov_trae: 'Trae', prov_zcode: 'ZCode (GLM)',
     prov_qwen: 'Qwen (Web)', prov_ollama: 'Ollama (local models)',
+    prov_free: 'Kilo (free tier)', free_hint: 'No account or key needed — calls the free pool of Kilo\'s public gateway. Upstream may log prompts; do not send sensitive data.',
+    prov_opencode: 'OpenCode (free tier)', oc_hint: 'No account or key needed — calls opencode.ai\'s free tier exactly like the official client. Upstream may log prompts; do not send sensitive data.',
     prov_custom: 'External APIs (custom)',
     custom_title: 'Add external API', custom_edit_title: 'Edit external API',
     custom_nick: 'Name (shown in panel)', custom_nick_ph: 'e.g. DeepSeek / Moonshot / some relay',
@@ -769,7 +778,19 @@ $$('.nav-item').forEach(item => {
     $$('.page').forEach(p => p.classList.remove('active'));
     $('#page-' + item.dataset.page).classList.add('active');
     if (item.dataset.page === 'logs') startLogStream();
-    if (item.dataset.page === 'api') renderModels(); // 每次进 API 页都拉最新模型列表
+    if (item.dataset.page === 'api') {
+      // stale-while-revalidate：已有缓存先即时渲染，再后台拉新（变了才重渲染，
+      // 避免打断正在输入的搜索框）
+      renderModels(!!modelCache);
+      if (modelCache) {
+        api('/api/panel/models').then(r => {
+          if (JSON.stringify(r.models) !== JSON.stringify(modelCache)) {
+            modelCache = r.models;
+            renderModels(true);
+          }
+        }).catch(() => {});
+      }
+    }
     if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); startUsageAuto(); }
     else stopUsageAuto();
     if (item.dataset.page === 'prices') loadPrices();
@@ -883,6 +904,8 @@ function providerMeta(name) {
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
     qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
     ollama: { label: t('prov_ollama'), icon: '/icons/ollama.png', color: '#9aa0a6' },
+    free: { label: t('prov_free'), icon: '/icons/free.svg', color: '#2dd4bf' },
+    opencode: { label: t('prov_opencode'), icon: '/icons/opencode.jpg', color: '#f59e0b' },
     custom: { label: t('prov_custom'), icon: '/favicon.svg', color: '#b07cff' },
   };
   return map[name] || { label: name, icon: '/favicon.svg', color: '#8b93a5' };
@@ -897,9 +920,14 @@ function renderProviders() {
   if (!overview) return;
   const box = $('#provCards');
   box.innerHTML = '';
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode']) {
     const s = (overview.summary && overview.summary[name]) || { accounts: 0, active: 0, remain: 0, total: 0, unit: '' };
     const meta = providerMeta(name);
+    // 客户端软件版本（仅 workbuddy/trae/zcode 提供）
+    const ver = (overview.clientVersions && overview.clientVersions[name]) || '';
+    const verHtml = ver
+      ? `<span class="pver" title="${t('client_version')}">v${esc(ver)}</span>`
+      : '';
     const card = document.createElement('div');
     card.className = 'card stat';
     // qwen 无固定额度、ollama 为本地推理：不显示数字，用占位符保持卡片高度一致
@@ -907,7 +935,7 @@ function renderProviders() {
       ? `<div class="num" style="opacity:.3">—</div>`
       : `<div class="num">${fmtNum(s.remain)}<small>${esc(s.unit || '')}</small></div>`;
     card.innerHTML = `
-      <div class="label"><span>${picoImg(name)} ${esc(meta.label)}</span><span class="dot ${s.active > 0 ? 'on' : 'off'}"></span></div>
+      <div class="label"><span>${picoImg(name)} ${esc(meta.label)}${verHtml}</span><span class="dot ${s.active > 0 ? 'on' : 'off'}"></span></div>
       ${numHtml}
       <div class="label" style="margin-top:6px"><span>${t('accounts')} ${s.accounts} · ${t('active')} ${s.active}</span></div>`;
     box.appendChild(card);
@@ -1054,7 +1082,7 @@ function renderAccounts() {
   const box = $('#acctSections');
   box.innerHTML = '';
   renderZcodePending(box);
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'custom']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode', 'custom']) {
     const meta = providerMeta(name);
     const list = (overview.accounts || []).filter(a => a.provider === name);
     const sec = document.createElement('div');
@@ -1063,7 +1091,7 @@ function renderAccounts() {
       <div class="sec-head">
         <h2>${picoImg(name)} ${esc(meta.label)} <span class="badge">${list.length}</span></h2>
         <div class="row">
-          ${name !== 'ollama' ? `<button class="sm" data-add="${name}">＋ ${t('acct_add')}</button>` : ''}
+          ${(name !== 'ollama' && name !== 'free' && name !== 'opencode') ? `<button class="sm" data-add="${name}">＋ ${t('acct_add')}</button>` : ''}
         </div>
       </div>
       <div data-list="${name}"></div>`;
@@ -1085,7 +1113,7 @@ function acctCard(a) {
   el.className = 'acct';
   const st = acctStatus(a);
   const q = a.lastQuota || a.quota;
-  const noCloud = a.provider === 'qwen' || a.provider === 'ollama'; // 本地/无固定额度：不显示额度条与凭据操作
+  const noCloud = a.provider === 'qwen' || a.provider === 'ollama' || a.provider === 'free' || a.provider === 'opencode'; // 本地/无固定额度：不显示额度条与凭据操作
   let quotaHtml = '';
   if (noCloud) {
     quotaHtml = ''; // 千问网页版 / 本机 Ollama：不显示"剩余额度/未查询"
@@ -1702,6 +1730,22 @@ let modelGroupOpen = {};
 try { modelGroupOpen = JSON.parse(localStorage.getItem('th_model_groups') || '{}'); } catch {}
 function saveModelGroups() { localStorage.setItem('th_model_groups', JSON.stringify(modelGroupOpen)); }
 
+/* 模型元数据渲染辅助 */
+function fmtCtx(n) {
+  if (!n || n <= 0) return '';
+  if (n >= 1048576) return (n / 1048576).toFixed(n % 1048576 ? 1 : 0).replace(/\.0$/, '') + 'M';
+  if (n >= 1000) return Math.round(n / 1000) + 'K';
+  return String(n);
+}
+function hexRgb(hex) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function rgbaStr(rgb, a) { return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`; }
+
 async function renderModels(cached) {
   if (!cached) {
     try {
@@ -1715,16 +1759,39 @@ async function renderModels(cached) {
   let html = '';
   let any = false;
   let total = 0;
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode']) {
     const list = all[name] || [];
     if (!list.length) continue;
     any = true;
     total += list.length;
     const meta = providerMeta(name);
     const open = !!modelGroupOpen[name];
-    const chips = list.map(m =>
-      `<span class="chip mchip" title="${esc(meta.label + (m.name ? ' · ' + m.name : ''))} · ${t('models_copy')}" data-mmodel="${esc(m.id)}"><b>${esc(m.id)}</b></span>`
-    ).join('');
+    const rows = list.map(m => {
+      const tags = (m.tags || []).map(tg => {
+        const [txt, col] = String(tg).split('|');
+        if (!txt) return '';
+        if (col) {
+          const rgb = hexRgb(col);
+          const style = rgb ? ` style="color:${esc(col)};border-color:${rgbaStr(rgb, .4)};background:${rgbaStr(rgb, .12)}"` : '';
+          return `<span class="mtag"${style}>${esc(txt)}</span>`;
+        }
+        return `<span class="mtag">${esc(txt)}</span>`;
+      }).join('');
+      const mark = v => v ? `<span class="mok">✓</span>` : `<span class="mno">–</span>`;
+      const disp = m.name || m.id;
+      const mul = m.credits ? `<span class="mmul" title="${t('models_credit_rate')}">${esc(String(m.credits).replace(/^x/, ''))}x</span>` : '<span class="mno">–</span>';
+      const title = `${meta.label} · ${m.id}${m.name && m.name !== m.id ? ' · ' + m.name : ''} · ${t('models_copy')}`;
+      return `<tr data-mmodel="${esc(m.id)}" title="${esc(title)}">
+        <td class="mt-name"><b>${esc(disp)}</b><span class="mid">${esc(m.id)}</span></td>
+        <td class="mt-c">${mark(m.reasoning)}</td>
+        <td class="mt-c">${mark(m.vision)}</td>
+        <td class="mt-c">${mark(m.tools)}</td>
+        <td class="mt-r">${fmtCtx(m.maxInput) || '<span class="mno">–</span>'}</td>
+        <td class="mt-r">${fmtCtx(m.maxOutput) || '<span class="mno">–</span>'}</td>
+        <td class="mt-r">${mul}</td>
+        <td class="mt-tags">${tags || '<span class="mno">–</span>'}</td>
+      </tr>`;
+    }).join('');
     html += `
       <div class="mgroup${open ? ' open' : ''}" data-mgroup="${name}">
         <div class="mgroup-head" data-mtoggle="${name}">
@@ -1733,7 +1800,12 @@ async function renderModels(cached) {
           <span style="flex:1"></span>
           <span class="mtri">▼</span>
         </div>
-        <div class="mgroup-body">${chips}</div>
+        <div class="mgroup-body">
+          <table class="mtable">
+            <thead><tr><th class="mt-name">${t('models_name')}</th><th class="mt-c">${t('models_think')}</th><th class="mt-c">${t('models_vision')}</th><th class="mt-c">${t('models_tools')}</th><th class="mt-r">${t('models_ctx')}</th><th class="mt-r">${t('models_out')}</th><th class="mt-r">${t('models_rate')}</th><th class="mt-tags">${t('models_status')}</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
       </div>`;
   }
   box.innerHTML = any
@@ -1742,7 +1814,7 @@ async function renderModels(cached) {
   renderExamples();
 }
 $('#modelChips').addEventListener('click', e => {
-  const chip = e.target.closest('.mchip');
+  const chip = e.target.closest('tr[data-mmodel]');
   if (chip) { copyText(chip.dataset.mmodel); return; }
   const head = e.target.closest('[data-mtoggle]');
   if (!head) return;
@@ -1758,12 +1830,12 @@ $('#modelChips').addEventListener('input', e => {
   e.currentTarget.querySelectorAll('.mgroup').forEach(grp => {
     if (!q) {
       grp.style.display = '';
-      grp.querySelectorAll('.mchip').forEach(c => { c.style.display = ''; });
+      grp.querySelectorAll('tr[data-mmodel]').forEach(c => { c.style.display = ''; });
       grp.classList.toggle('open', !!modelGroupOpen[grp.dataset.mgroup]);
       return;
     }
     let hits = 0;
-    grp.querySelectorAll('.mchip').forEach(c => {
+    grp.querySelectorAll('tr[data-mmodel]').forEach(c => {
       const hit = (c.dataset.mmodel || '').toLowerCase().includes(q);
       c.style.display = hit ? '' : 'none';
       if (hit) hits++;
@@ -1772,7 +1844,7 @@ $('#modelChips').addEventListener('input', e => {
     grp.classList.toggle('open', hits > 0);
   });
 });
-$('#btnReloadModels').addEventListener('click', () => { modelCache = null; renderModels(); });
+$('#btnReloadModels').addEventListener('click', () => { modelCache = null; renderModels(); api('/api/panel/models?fresh=1').then(r => { modelCache = r.models; renderModels(true); }).catch(() => {}); });
 
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText($('#' + b.dataset.copy).value)));
 $('#dashKeyEye').addEventListener('click', () => { $('#dashKey').type = $('#dashKey').type === 'password' ? 'text' : 'password'; });
@@ -1818,7 +1890,7 @@ function renderSettings() {
     settingRow(t('set_listen_host'), t('set_listen_host_d'), `<input type="text" id="sHost" value="${esc(c.host)}">`),
     settingRow(t('set_listen_port'), '', `<input type="number" id="sPort" value="${c.port}">`),
     settingRow(t('set_api_key'), '', `<div class="keyline"><input type="text" id="sKey" value="${esc(c.apiKey)}"><button class="sm" id="sRegen">${t('set_regen_key')}</button></div>`),
-    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode', 'qwen', 'ollama'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
+    settingRow(t('set_default_provider'), '', `<select id="sDefProv">${['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode'].map(pv => `<option value="${pv}" ${c.defaultProvider === pv ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}</select>`),
     settingRow(t('set_auto_checkin'), t('set_auto_checkin_d'), `<label class="switch"><input type="checkbox" id="sAutoCheckin" ${c.autoCheckin ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_wb_keepalive'), t('set_wb_keepalive_d'), `<label class="switch"><input type="checkbox" id="sWbKeep" ${c.wbIntlKeepalive ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_zcode_claim'), t('set_zcode_claim_d'), `<label class="switch"><input type="checkbox" id="sZcClaim" ${c.zcodeAutoClaim ? 'checked' : ''}><i></i></label>`),
@@ -2401,9 +2473,9 @@ $('#priceSearch')?.addEventListener('input', (() => {
 })());
 $('#btnPriceRefresh')?.addEventListener('click', e => withBusy(e.currentTarget, () => loadPrices(true), t('price_refreshing')));
 
-const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'custom'];
+const SHARE_PROVS = ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode', 'custom'];
 function shareLimitLabel(pv) {
-  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : pv === 'ollama' ? t('share_limit_ol') : t('share_limit_zc');
+  return pv === 'workbuddy' ? t('share_limit_wb') : pv === 'trae' ? t('share_limit_trae') : pv === 'qwen' ? t('share_limit_qw') : (pv === 'ollama' || pv === 'free' || pv === 'opencode') ? t('share_limit_ol') : t('share_limit_zc');
 }
 
 async function loadShares() {

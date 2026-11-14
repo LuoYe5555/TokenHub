@@ -21,7 +21,11 @@ import (
 	"tokenhub/internal/store"
 )
 
-const userAgent = "CLI/2.63.2 CodeBuddy/2.63.2"
+const clientVersion = "2.63.2"
+const userAgent = "CLI/" + clientVersion + " CodeBuddy/" + clientVersion
+
+// ClientVersion WorkBuddy/CodeBuddy API 模拟版本（请求头同款；面板总览展示用）。
+func ClientVersion() string { return clientVersion }
 
 // site 按领域划分的上游站点。
 type site struct {

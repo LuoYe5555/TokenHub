@@ -94,11 +94,16 @@ func Err(kind Kind, status int, format string, args ...any) *Error {
 
 // ModelInfo 模型。
 type ModelInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name,omitempty"`
-	MaxInput  int64  `json:"maxInput,omitempty"`
-	MaxOutput int64  `json:"maxOutput,omitempty"`
-	Credits   string `json:"credits,omitempty"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name,omitempty"`
+	MaxInput  int64    `json:"maxInput,omitempty"`
+	MaxOutput int64    `json:"maxOutput,omitempty"`
+	Credits   string   `json:"credits,omitempty"` // 计费倍速，如 "x0.69"
+	// Tags 彩色徽章（如「限时免费」「夜间折扣」「订阅优先」），格式 "文案|#RRGGBB"。
+	Tags      []string `json:"tags,omitempty"`
+	Reasoning bool     `json:"reasoning,omitempty"` // 支持思考/推理输出
+	Vision    bool     `json:"vision,omitempty"`    // 支持图片输入
+	Tools     bool     `json:"tools,omitempty"`     // 支持工具调用
 }
 
 // Provider 三家上游的统一接口。

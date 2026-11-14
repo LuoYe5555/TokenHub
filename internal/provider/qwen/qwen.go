@@ -163,7 +163,7 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 
 // seedModels 上游目录不可用时的兜底模型表（2026-10 实测目录）。
 var seedModels = []provider.ModelInfo{
-	{ID: "qwen3.8-max"}, {ID: "qwen3.7-plus"}, {ID: "qwen3.8-omni-flash"},
+	{ID: "qwen3.8-max", Name: "Qwen3.8-Max"}, {ID: "qwen3.7-plus", Name: "Qwen3.7-Plus"}, {ID: "qwen3.8-omni-flash", Name: "Qwen3.8-Omni-Flash"},
 }
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }

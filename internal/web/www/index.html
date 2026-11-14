@@ -61,8 +61,9 @@ h1{font-size:20px;margin-bottom:4px}
 .stat .num small{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .dot.on{background:var(--green)} .dot.off{background:var(--muted)}
-.pico{width:20px;height:20px;border-radius:6px;vertical-align:-4px;margin-right:2px}
-h2 .pico{width:22px;height:22px;border-radius:7px;vertical-align:-5px}
+.pico{width:20px;height:20px;border-radius:6px;vertical-align:-4px;margin-right:2px;object-fit:cover}
+.pver{font-size:11px;font-weight:400;color:var(--muted);opacity:.75;margin-left:6px;border:1px solid var(--line,#2a2f3a);border-radius:8px;padding:0 6px;line-height:16px}
+h2 .pico{width:22px;height:22px;border-radius:7px;vertical-align:-5px;object-fit:cover}
 /* 按钮 */
 button{
   background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;
@@ -131,10 +132,30 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .mgroup-head b{font-size:13px}
 .mgroup-head .mtri{font-size:10px;opacity:.55;transition:transform .15s;line-height:1}
 .mgroup.open .mgroup-head .mtri{transform:rotate(180deg)}
-.mgroup-body{display:none;gap:6px;flex-wrap:wrap;padding:10px 12px;border-top:1px solid var(--border)}
-.mgroup.open .mgroup-body{display:flex}
+.mgroup-body{display:none;border-top:1px solid var(--border)}
+.mgroup.open .mgroup-body{display:block}
 .mchip{cursor:pointer;transition:border-color .15s}
 .mchip:hover{border-color:var(--accent)}
+/* 可用模型表格 */
+.mtable{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtable th{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap;user-select:none}
+.mtable th.mt-c{text-align:center;width:52px}
+.mtable th.mt-r{text-align:right}
+.mtable th.mt-tags{text-align:left}
+.mtable td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.mtable tbody tr{cursor:pointer;transition:background .12s}
+.mtable tbody tr:last-child td{border-bottom:none}
+.mtable tbody tr:hover{background:rgba(127,127,127,.1)}
+.mt-name{min-width:200px}
+.mt-name b{display:block;font-weight:600;letter-spacing:.2px}
+.mt-name .mid{display:block;font-size:10.5px;color:var(--muted);font-family:var(--mono);opacity:.8}
+.mt-c{text-align:center;width:52px;white-space:nowrap}
+.mt-r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mt-tags{white-space:nowrap}
+.mok{color:var(--accent);font-weight:700}
+.mno{color:var(--muted);opacity:.55}
+.mtag{font-size:10.5px;padding:1px 8px;border-radius:999px;border:1px solid;line-height:1.6;white-space:nowrap}
+.mmul{font-size:11.5px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
 .keyline{display:flex;gap:8px;align-items:center}
 .keyline input{font-family:var(--mono)}
 .fmt-row{display:flex;gap:8px;align-items:center;margin-top:8px}

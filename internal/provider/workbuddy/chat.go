@@ -27,10 +27,10 @@ var seedModels = []provider.ModelInfo{
 	{ID: "hy3", Name: "Hy3"}, {ID: "hy3-x", Name: "Hy3"},
 	{ID: "hy4-preview", Name: "Hy4 Preview"}, {ID: "hy4-preview-x", Name: "Hy4 Preview"},
 	{ID: "glm-5.3", Name: "GLM-5.3"}, {ID: "glm-5.2", Name: "GLM-5.2"}, {ID: "glm-5.3-flash", Name: "GLM-5.3-Flash"},
-	{ID: "glm-5.1"}, {ID: "glm-5.0"}, {ID: "glm-4.7"}, {ID: "glm-4.6"}, {ID: "glm-4.6v", Name: "GLM-4.6V"},
+	{ID: "glm-5.1", Name: "GLM-5.1"}, {ID: "glm-5.0", Name: "GLM-5.0"}, {ID: "glm-4.7", Name: "GLM-4.7"}, {ID: "glm-4.6", Name: "GLM-4.6"}, {ID: "glm-4.6v", Name: "GLM-4.6V"},
 	{ID: "glm-5v-turbo", Name: "GLM-5v-Turbo"},
 	{ID: "kimi-k3-1", Name: "Kimi-K3"}, {ID: "kimi-k3.1-pro", Name: "Kimi-K3.1-Pro"},
-	{ID: "kimi-k2.8-preview", Name: "Kimi-K2.8-Preview"}, {ID: "kimi-k2.5"}, {ID: "kimi-k2-thinking", Name: "Kimi-K2-Thinking"},
+	{ID: "kimi-k2.8-preview", Name: "Kimi-K2.8-Preview"}, {ID: "kimi-k2.5", Name: "Kimi-K2.5"}, {ID: "kimi-k2-thinking", Name: "Kimi-K2-Thinking"},
 	{ID: "deepseek-v4-pro", Name: "DeepSeek-V4-Pro"}, {ID: "deepseek-v4.1-flash", Name: "DeepSeek-V4.1-Flash"},
 	{ID: "deepseek-v4-flash", Name: "DeepSeek-V4-Flash"}, {ID: "deepseek-v3-2-volc", Name: "DeepSeek-V3.2"},
 	{ID: "minimax-m3", Name: "MiniMax-M3"}, {ID: "minimax-m2.5", Name: "MiniMax-M2.5"}, {ID: "minimax-m3.1-flash", Name: "MiniMax-M3.1-Flash"},
@@ -39,6 +39,56 @@ var seedModels = []provider.ModelInfo{
 }
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }
+
+// flexBool 兼容 bool 与 {"supported":bool} 两种上游布尔形状。
+func flexBool(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		return b
+	}
+	var obj struct {
+		Supported bool `json:"supported"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Supported
+	}
+	return false
+}
+
+// normCredits 归一计费倍速："x0.69 credits" / "x0.69" → "0.69x"。
+func normCredits(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "x")
+	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "credits"))
+	if s == "" {
+		return ""
+	}
+	return s + "x"
+}
+
+// parseBadgeTags 提取上游 tags 里的彩色徽章："badge:限时免费:#FF0000" → "限时免费|#FF0000"。
+// 其余标签（craft 等）忽略。
+func parseBadgeTags(tags []string) []string {
+	var out []string
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "badge:") {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimPrefix(tag, "badge:"), ":", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		entry := parts[0]
+		if len(parts) == 2 && parts[1] != "" {
+			entry += "|" + parts[1]
+		}
+		out = append(out, entry)
+	}
+	return out
+}
 
 // Models 动态模型目录（personal/models，5 分钟缓存）。
 func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.ModelInfo, error) {
@@ -52,16 +102,20 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 		Code int `json:"code"`
 		Data struct {
 			Models []struct {
-				ID              string `json:"id"`
-				Name            string `json:"name"`
-				Disabled        bool   `json:"disabled"`
-				Credits         string `json:"credits"`
-				MaxInputTokens  int64  `json:"maxInputTokens"`
-				MaxOutputTokens int64  `json:"maxOutputTokens"`
+				ID                string          `json:"id"`
+				Name              string          `json:"name"`
+				Disabled          bool            `json:"disabled"`
+				Credits           string          `json:"credits"`
+				MaxInputTokens    int64           `json:"maxInputTokens"`
+				MaxOutputTokens   int64           `json:"maxOutputTokens"`
+				Tags              []string        `json:"tags"`
+				Reasoning         json.RawMessage `json:"reasoning"`         // bool 或 {supported:bool}
+				SupportsReasoning json.RawMessage `json:"supportsReasoning"` // 同上
+				SupportsImages    json.RawMessage `json:"supportsImages"`
+				SupportsToolCall  json.RawMessage `json:"supportsToolCall"`
 			} `json:"models"`
-			Agents map[string]struct {
-				Models []string `json:"models"`
-			} `json:"agents"`
+			// Agents 兼容两种形状：新版本是数组 [{name, models}]，旧版本是 map {cli:{models}}。
+			Agents json.RawMessage `json:"agents"`
 		} `json:"data"`
 	}
 	if _, err := httpx.DoJSON(ctx, "GET", s.ChatBase+"/console/enterprises/personal/models", h, nil, &out, 30*time.Second); err != nil {
@@ -71,9 +125,30 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 		return nil, provider.Err(provider.KindServer, 0, "模型目录为空")
 	}
 	cliModels := map[string]bool{}
-	if a, ok := out.Data.Agents["cli"]; ok {
-		for _, m := range a.Models {
-			cliModels[m] = true
+	// agents 兼容数组（新版）与 map（旧版）两种形状，取 name=="cli" 的模型列表。
+	var agentArr []struct {
+		Name   string   `json:"name"`
+		Models []string `json:"models"`
+	}
+	var agentMap map[string]struct {
+		Models []string `json:"models"`
+	}
+	if err := json.Unmarshal(out.Data.Agents, &agentArr); err == nil {
+		for _, a := range agentArr {
+			if a.Name == "cli" {
+				cliModels = make(map[string]bool, len(a.Models))
+				for _, m := range a.Models {
+					cliModels[m] = true
+				}
+				break
+			}
+		}
+	} else if err := json.Unmarshal(out.Data.Agents, &agentMap); err == nil {
+		if a, ok := agentMap["cli"]; ok {
+			cliModels = make(map[string]bool, len(a.Models))
+			for _, m := range a.Models {
+				cliModels[m] = true
+			}
 		}
 	}
 	var list []provider.ModelInfo
@@ -84,7 +159,17 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 		if len(cliModels) > 0 && !cliModels[m.ID] {
 			continue
 		}
-		list = append(list, provider.ModelInfo{ID: m.ID, Name: m.Name, MaxInput: m.MaxInputTokens, MaxOutput: m.MaxOutputTokens, Credits: m.Credits})
+		list = append(list, provider.ModelInfo{
+			ID:        m.ID,
+			Name:      m.Name,
+			MaxInput:  m.MaxInputTokens,
+			MaxOutput: m.MaxOutputTokens,
+			Credits:   normCredits(m.Credits),
+			Tags:      parseBadgeTags(m.Tags),
+			Reasoning: flexBool(m.Reasoning) || flexBool(m.SupportsReasoning),
+			Vision:    flexBool(m.SupportsImages),
+			Tools:     flexBool(m.SupportsToolCall),
+		})
 	}
 	if len(list) == 0 {
 		return nil, provider.Err(provider.KindServer, 0, "模型目录为空")

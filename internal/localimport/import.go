@@ -281,3 +281,21 @@ func TraeLocal() []*store.Account {
 	}
 	return []*store.Account{acct}
 }
+
+// TraeLocalVersion 本机 Trae 客户端版本（storage.json 的 iCubeLastVersion，面板总览展示用）。
+func TraeLocalVersion() string {
+	dir := traeDataDir()
+	if dir == "" {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "User", "globalStorage", "storage.json"))
+	if err != nil {
+		return ""
+	}
+	var storage map[string]any
+	if json.Unmarshal(b, &storage) != nil {
+		return ""
+	}
+	v, _ := storage["iCubeLastVersion"].(string)
+	return v
+}

@@ -18,6 +18,8 @@ const (
 	PQwen      = "qwen"
 	POllama    = "ollama"
 	PCustom    = "custom"
+	PFree      = "free"
+	POpencode  = "opencode"
 )
 
 // QuotaPart 额度明细（权益包 / 额度窗口）。

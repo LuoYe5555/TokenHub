@@ -24,6 +24,8 @@ const (
 	PQwen      = "qwen"
 	POllama    = "ollama"
 	PCustom    = "custom"
+	PFree      = "free"
+	POpencode  = "opencode"
 )
 
 // GitCommit 构建时由 -ldflags -X 注入（git rev-parse --short HEAD），
@@ -31,7 +33,9 @@ const (
 // 注意必须是 var（ldflags -X 不支持 const）。
 var GitCommit = ""
 
-func AllProviders() []string { return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama} }
+func AllProviders() []string {
+	return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama, PFree, POpencode}
+}
 
 // 破甲生效范围（PJScope）。
 const (
@@ -235,7 +239,7 @@ func (c *Config) Normalize() {
 	if c.Providers == nil {
 		c.Providers = map[string]*ProviderConfig{}
 	}
-	defModels := map[string]string{PWorkBuddy: "deepseek-v4-pro", PTrae: "glm-5.2", PZCode: "glm-5.3"}
+	defModels := map[string]string{PWorkBuddy: "deepseek-v4-pro", PTrae: "glm-5.2", PZCode: "glm-5.3", PFree: "kilo-auto/free", POpencode: "big-pickle"}
 	for _, name := range AllProviders() {
 		pc := c.Providers[name]
 		if pc == nil {

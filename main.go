@@ -24,6 +24,8 @@ import (
 	"tokenhub/internal/pool"
 	"tokenhub/internal/pricing"
 	"tokenhub/internal/provider/custom"
+	"tokenhub/internal/provider/free"
+	"tokenhub/internal/provider/opencode"
 	"tokenhub/internal/provider/ollama"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
@@ -82,6 +84,28 @@ func main() {
 	pl.Register(qwen.New(cfg))
 	pl.Register(ollama.New(cfg))
 	pl.Register(custom.New(cfg))
+	pl.Register(free.New(cfg))
+	pl.Register(opencode.New(cfg))
+	// 免凭据 provider 的伪账号同步创建（不能放 goroutine：启动头几秒
+	// AllModels 若查不到账号会用 SeedModels 兜底并被 60s 缓存钉住）
+	if len(st.ByProvider(store.POllama)) == 0 {
+		_ = st.Upsert(&store.Account{
+			ID: store.NewID(), Provider: store.POllama, Nickname: "本机 Ollama",
+			Enabled: true, CreatedAt: time.Now().Unix(),
+		})
+	}
+	if len(st.ByProvider(store.PFree)) == 0 {
+		_ = st.Upsert(&store.Account{
+			ID: store.NewID(), Provider: store.PFree, Nickname: "Kilo 免费池",
+			Enabled: true, CreatedAt: time.Now().Unix(),
+		})
+	}
+	if len(st.ByProvider(store.POpencode)) == 0 {
+		_ = st.Upsert(&store.Account{
+			ID: store.NewID(), Provider: store.POpencode, Nickname: "OpenCode 免费档",
+			Enabled: true, CreatedAt: time.Now().Unix(),
+		})
+	}
 	zcode.WarmAppVersion()
 
 	// 启动即扫描本机已登录的客户端账号（静默导入，按 uid 去重）
@@ -92,21 +116,9 @@ func main() {
 		if accts := zcodeReadLocalAccounts(); len(accts) > 0 {
 			added[store.PZCode] = localimport.AddAllUnique(st, store.PZCode, accts)
 		}
-		// Ollama 无需凭据：没有账号就建一个伪账号占位（本机服务，模型动态发现）
-		if len(st.ByProvider(store.POllama)) == 0 {
-			if err := st.Upsert(&store.Account{
-				ID:        store.NewID(),
-				Provider:  store.POllama,
-				Nickname:  "本机 Ollama",
-				Enabled:   true,
-				CreatedAt: time.Now().Unix(),
-			}); err == nil {
-				added[store.POllama] = 1
-			}
-		}
-		if n := added[store.PWorkBuddy] + added[store.PTrae] + added[store.PZCode] + added[store.POllama]; n > 0 {
-			logx.Infof("import", "本机自动导入完成: workbuddy +%d, trae +%d, zcode +%d, ollama +%d",
-				added[store.PWorkBuddy], added[store.PTrae], added[store.PZCode], added[store.POllama])
+		if n := added[store.PWorkBuddy] + added[store.PTrae] + added[store.PZCode]; n > 0 {
+			logx.Infof("import", "本机自动导入完成: workbuddy +%d, trae +%d, zcode +%d",
+				added[store.PWorkBuddy], added[store.PTrae], added[store.PZCode])
 		}
 	}()
 

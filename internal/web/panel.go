@@ -18,6 +18,7 @@ import (
 	"tokenhub/internal/accel"
 	"tokenhub/internal/autoslide"
 	"tokenhub/internal/config"
+	"tokenhub/internal/localimport"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pj"
 	"tokenhub/internal/pool"
@@ -25,6 +26,7 @@ import (
 	"tokenhub/internal/provider"
 	"tokenhub/internal/provider/custom"
 	"tokenhub/internal/provider/qwen"
+	"tokenhub/internal/provider/workbuddy"
 	"tokenhub/internal/provider/zcode"
 	"tokenhub/internal/scheduler"
 	"tokenhub/internal/shares"
@@ -598,6 +600,12 @@ func (p *Panel) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"accounts": accounts,
 		"summary":  sums,
 		"localIP":  localIP(),
+		// 各客户端软件版本（总览卡片展示用；空串=未检测到）
+		"clientVersions": map[string]string{
+			store.PWorkBuddy: workbuddy.ClientVersion(),
+			store.PTrae:      localimport.TraeLocalVersion(),
+			store.PZCode:     zcode.AppVersion(),
+		},
 		// 页面跑在内嵌 WebView 里（而非外部浏览器）时才允许自动滑块
 		"webviewWindow": p.wvDispatch != nil,
 	})
@@ -644,6 +652,10 @@ func (p *Panel) handleLogStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Panel) handleModels(w http.ResponseWriter, r *http.Request) {
+	// ?fresh=1 绕过 60s 缓存强制重打上游（面板「刷新」按钮）
+	if r.URL.Query().Get("fresh") == "1" {
+		p.pl.InvalidateModels()
+	}
 	writeJSON(w, map[string]any{"models": p.poolModels(r.Context())})
 }
 

@@ -4,6 +4,7 @@ package trae
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -435,6 +436,16 @@ var seedModels = []provider.ModelInfo{
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }
 
+// tagIn 判断 tags 里是否已存在指定文案。
+func tagIn(tags []string, text string) bool {
+	for _, t := range tags {
+		if part := strings.SplitN(t, "|", 2)[0]; part == text {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.ModelInfo, error) {
 	p.mmu.Lock()
 	if p.models != nil && time.Since(p.modelsAt) < time.Hour {
@@ -454,10 +465,18 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 	}
 	var out struct {
 		ConfigInfoList []struct {
-			ConfigName    string `json:"config_name"`
+			ConfigName        string `json:"config_name"`
+			ContextWindow     struct {
+				Dev int64 `json:"dev"`
+			} `json:"context_window_tokens"`
 			DisplayConfig struct {
-				DisplayName string `json:"display_name"`
+				DisplayName   string   `json:"display_name"`
+				Multimodal    bool     `json:"multimodal"`
+				IsBeta        bool     `json:"is_beta"`
+				Tags          []string `json:"tags"`
+				ModelCapability string `json:"model_capability"`
 			} `json:"display_config"`
+			ReasoningEffort json.RawMessage `json:"reasoning_effort_config"`
 		} `json:"config_info_list"`
 	}
 	if _, err := httpx.DoJSON(ctx, "POST", agentBase(pc)+epModels, soloHeaders(acct), body, &out, 30*time.Second); err != nil {
@@ -468,7 +487,50 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 		if c.ConfigName == "" {
 			continue
 		}
-		list = append(list, provider.ModelInfo{ID: c.ConfigName, Name: c.DisplayConfig.DisplayName})
+		dc := c.DisplayConfig
+		name := dc.DisplayName
+		if name == "" {
+			name = c.ConfigName
+		}
+		mi := provider.ModelInfo{
+			ID:       c.ConfigName,
+			Name:     name,
+			MaxInput: c.ContextWindow.Dev,
+			Vision:   dc.Multimodal,
+		}
+		// 思考能力：优先 reasoning_effort_config.support_thinking，
+		// 该字段缺失时回退 model_capability == "reasoning_model"。
+		if len(c.ReasoningEffort) > 0 {
+			var re struct {
+				SupportThinking bool `json:"support_thinking"`
+				DefaultLevel    string `json:"default_level"`
+			}
+			if err := json.Unmarshal(c.ReasoningEffort, &re); err == nil {
+				mi.Reasoning = re.SupportThinking || re.DefaultLevel != ""
+			}
+		}
+		if !mi.Reasoning && dc.ModelCapability == "reasoning_model" {
+			mi.Reasoning = true
+		}
+		// 徽章：tags（如 Beta）加琥珀色
+		for _, tag := range dc.Tags {
+			if tag == "" {
+				continue
+			}
+			color := ""
+			if strings.EqualFold(tag, "beta") {
+				color = "#f59e0b"
+			}
+			if color != "" {
+				mi.Tags = append(mi.Tags, tag+"|"+color)
+			} else {
+				mi.Tags = append(mi.Tags, tag)
+			}
+		}
+		if dc.IsBeta && !tagIn(mi.Tags, "Beta") {
+			mi.Tags = append(mi.Tags, "Beta|#f59e0b")
+		}
+		list = append(list, mi)
 	}
 	if len(list) == 0 {
 		return nil, provider.Err(provider.KindServer, 0, "模型列表为空")
