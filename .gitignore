@@ -4,6 +4,10 @@ data/
 # 本地杂物
 *.log
 *.bak
-TokenHub.new.exe
 .playwright-cli/
 .workbuddy/
+
+# 编译产物：CI 会自动构建并上传 Release，仓库不放二进制
+*.exe
+TokenHub-linux-*
+*.tar.gz
