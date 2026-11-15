@@ -4,6 +4,7 @@ data/
 # 本地杂物
 *.log
 *.bak
+*.asar
 .playwright-cli/
 .workbuddy/
 
