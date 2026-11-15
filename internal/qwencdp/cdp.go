@@ -70,7 +70,15 @@ func Launch(exe, profileDir string, port int, url string, headless bool) (*exec.
 	}
 	args = append(args, url)
 	cmd := exec.Command(exe, args...)
-	setSysProcAttr(cmd, createNoWindow)
+	if headless {
+		// headless：没有可见窗口，顺带防控制台闪烁
+		setSysProcAttr(cmd, createNoWindow)
+	} else {
+		// headed：绝不设 HideWindow/CREATE_NO_WINDOW —— Edge/Chrome 的第一个
+		// 窗口会尊重 STARTUPINFO 的 SW_HIDE，导致进程和调试端口都活着但
+		// 窗口永远不显示（2026-11-15 实测踩坑）。GUI 子系统程序本无控制台，不会闪黑框。
+		cmd.SysProcAttr = nil
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

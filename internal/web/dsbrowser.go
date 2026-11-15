@@ -40,8 +40,10 @@ var lastDSLog atomic.Value
 
 func init() { lastDSLog.Store(time.Time{}) }
 
-// dsTokenRe DeepSeek token 形状（长 hex / JWT-ish）
-var dsTokenRe = regexp.MustCompile(`^[A-Za-z0-9._-]{40,}$`)
+// dsTokenRe DeepSeek token 形状（长 hex / JWT-ish / base64）。
+// 2026-11 实测：新登录会话的 token 是 base64（含 + /），如
+// 6H7WufPVeNkxsi/W37BarAk07/U26FrtuSzSkvs+EjsNk4pNLR…，旧版纯 hex 仍然兼容。
+var dsTokenRe = regexp.MustCompile(`^[A-Za-z0-9._+/=-]{40,}$`)
 
 func isPlausibleDSToken(s string) bool { return dsTokenRe.MatchString(strings.TrimSpace(s)) }
 
@@ -105,7 +107,18 @@ func (p *Panel) handleDSBrowserPoll(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": false, "status": "waiting"})
 		return
 	}
-	logx.Infof("panel", "DeepSeek 导入 poll：取到 userToken（len=%d 前缀=%q）", len(raw), truncStr(raw, 60))
+	// 登录态被清掉时网页端会留下 {"value":null,...}：弹窗里未登录，节流提示用户去登录；
+	// 未登录期间完全不刷「取到 userToken」日志（len=30 的 null 包装每 2 秒一条太吵）
+	if strings.Contains(raw, `"value":null`) {
+		if time.Since(lastDSLog.Load().(time.Time)) > 10*time.Second {
+			lastDSLog.Store(time.Now())
+			logx.Infof("panel", "DeepSeek 导入 poll：导入窗口里尚未登录（userToken 为空），请在弹出的浏览器窗口里完成登录，登录后本页会自动导入")
+		}
+		writeJSON(w, map[string]any{"ok": false, "status": "waiting"})
+		return
+	}
+	// 真正抓到登录 token 才记一条（一次性）
+	logx.Infof("panel", "DeepSeek 导入 poll：已抓到登录 token（len=%d）", len(raw))
 	// 实测形状：{"value":"<token 字符串>","__version":"0"}；兼容旧的 {"value":{"token":"..."}} 包裹
 	var envStr struct {
 		Value string `json:"value"`
