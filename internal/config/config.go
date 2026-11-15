@@ -132,6 +132,10 @@ type Config struct {
 	OptCompactJSON *bool `json:"optCompactJSON,omitempty"` // 紧凑化请求中的 pretty JSON；nil=开
 	OptNearDup     *bool `json:"optNearDup,omitempty"`     // 近重复工具结果折叠（同一工具、内容≥90%相似的旧结果只留最新）；nil=开
 
+	// 网页无痕模式：千问 / DeepSeek 网页版每次对话后自动删除上游会话，
+	// API 调用不会在网页版历史列表堆积记录；nil=开
+	CleanWebHistory *bool `json:"cleanWebHistory,omitempty"`
+
 	ReqDump bool `json:"reqDump,omitempty"` // 诊断：把客户端原始请求快照落盘 data/reqdump（默认关）
 
 	// 破甲（提示词对抗研究）总开关：true=设置页里配置的破甲策略对所有提供商生效。
@@ -334,6 +338,9 @@ func (c *Config) OptCompactJSONOn() bool { return c.OptCompactJSON == nil || *c.
 
 // OptNearDupOn 近重复工具结果折叠开关（缺省开）。
 func (c *Config) OptNearDupOn() bool { return c.OptNearDup == nil || *c.OptNearDup }
+
+// CleanWebHistoryOn 网页无痕模式（千问/DeepSeek 对话后自动删除上游会话；缺省开）。
+func (c *Config) CleanWebHistoryOn() bool { return c.CleanWebHistory == nil || *c.CleanWebHistory }
 
 // PJCompactOn 破甲段重复折叠开关（缺省开）。
 func (c *Config) PJCompactOn() bool { return c.PJCompact == nil || *c.PJCompact }

@@ -330,6 +330,14 @@ func (p *Provider) createSession(ctx context.Context, acct *store.Account) (stri
 	return id, nil
 }
 
+// deleteSession 删除网页会话（best-effort：失败静默，不影响对话结果）。
+// 网页版删除接口幂等，会话不存在也返回 code:0。
+func (p *Provider) deleteSession(ctx context.Context, acct *store.Account, sessionID string) {
+	body, _ := json.Marshal(map[string]string{"chat_session_id": sessionID})
+	var out map[string]any
+	_, _ = httpx.DoJSON(ctx, "POST", p.base()+"/api/v0/chat_session/delete", headers(acct, p.base(), ""), body, &out, 10*time.Second)
+}
+
 // fetchChallenge 领 PoW 挑战。
 func (p *Provider) fetchChallenge(ctx context.Context, acct *store.Account) (Challenge, error) {
 	var out struct {
@@ -401,6 +409,15 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 	if err != nil {
 		sink.Close()
 		return err
+	}
+	// 网页无痕模式（默认开）：对话结束（含失败路径）后删除会话，
+	// 避免网页版历史被 API 调用堆积。用独立 context，上游流被客户端取消时也能完成删除。
+	if p.cfg.CleanWebHistoryOn() {
+		defer func() {
+			dctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			p.deleteSession(dctx, acct, sessionID)
+		}()
 	}
 	// 2) 领挑战并求解 PoW
 	ch, err := p.fetchChallenge(ctx, acct)

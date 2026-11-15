@@ -495,6 +495,13 @@ func notePunish(acct *store.Account, body []byte) {
 	}
 }
 
+// deleteChat 删除网页会话（best-effort：失败静默，不影响对话结果）。
+// 实测接口：DELETE /api/v2/chats/{chat_id}（2026-11 验证：已删会话查详情返回 Not_Found）。
+func (p *Provider) deleteChat(ctx context.Context, acct *store.Account, chatID string) {
+	var out map[string]any
+	_, _ = httpx.DoJSON(ctx, "DELETE", p.base()+"/api/v2/chats/"+chatID, headers(acct, p.base(), chatID), nil, &out, 10*time.Second)
+}
+
 // Chat 实现 provider.Provider。
 func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []byte, sink provider.Sink) error {
 	base := p.base()
@@ -576,6 +583,15 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 			return provider.Err(provider.KindServer, 0, "新建会话被上游拒绝: %s", detail)
 		}
 		return provider.Err(provider.KindServer, 0, "新建会话失败：上游未返回会话 ID（可能风控拦截），请稍后重试")
+	}
+	// 网页无痕模式（默认开）：对话结束（含失败路径）后删除会话，
+	// 避免「API Chat」记录在网页版历史列表堆积。独立 context，客户端取消也能删。
+	if p.cfg.CleanWebHistoryOn() {
+		defer func() {
+			dctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			p.deleteChat(dctx, acct, chatID)
+		}()
 	}
 	// 2) 发送对话（SSE）
 	fid := provider.NewUUID()
