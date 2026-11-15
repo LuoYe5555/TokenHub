@@ -22,6 +22,7 @@ const (
 	PTrae      = "trae"
 	PZCode     = "zcode"
 	PQwen      = "qwen"
+	PDeepSeek  = "deepseek"
 	POllama    = "ollama"
 	PCustom    = "custom"
 	PFree      = "free"
@@ -34,7 +35,7 @@ const (
 var GitCommit = ""
 
 func AllProviders() []string {
-	return []string{PWorkBuddy, PTrae, PZCode, PQwen, POllama, PFree, POpencode}
+	return []string{PWorkBuddy, PTrae, PZCode, PQwen, PDeepSeek, POllama, PFree, POpencode}
 }
 
 // 破甲生效范围（PJScope）。

@@ -401,7 +401,7 @@ func requestHasTools(body []byte) bool {
 
 // pseudoProviders 没有原生工具能力的提供商（免费池模型），客户端带工具时
 // 自动改走伪工具协议（提示词注入 + 标记解析还原）。
-var pseudoProviders = map[string]bool{store.PFree: true, store.POpencode: true}
+var pseudoProviders = map[string]bool{store.PFree: true, store.POpencode: true, store.PDeepSeek: true}
 
 // engagePseudoTools 判定并改写：返回（改写后 body, 是否启用伪工具）。
 func (g *Gateway) engagePseudoTools(provName string, body []byte) ([]byte, bool) {
@@ -565,36 +565,47 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, mapClientStatus(perr), string(perr.Kind), perr.Msg)
 		return
 	}
+	// 伪工具解析先于破甲判定：思考流里也可能藏着 <tool_call>（ERNIE 惯犯），
+	// 解析出的调用落进 raw 的 tool_calls，有调用就不再触发拒答重试。
+	if pseudo {
+		raw = pseudotools.ApplyToResponse(raw)
+	}
 	// 破甲 failover：回复被判拒答且还有更强策略时，用最强策略在底稿上重打一次（非流式最多一次）。
 	// 计入同一份 share 用量与 usage 记录，避免重复计费；重试结果更好才替换。
 	// 带 tools 的重试同样走前置段 only（模板在工具流里会污染 tool_calls）。
 	toolsReq := requestHasTools(prePJ)
-	if txt := openaiContentText(raw); g.shouldPJRetry(prov.Name(), txt) {
-		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
-			logx.Infof("gateway", "破甲 failover：chat(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
-			retryBody := pj.ApplyStrategy(stronger, prePJ)
-			if toolsReq {
-				if out, changed := pj.StripTemplate(retryBody); changed {
-					retryBody = out
-				}
-				if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
-					retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
-				}
-			}
-			retrySink := NewAggregateSink(outModel)
-			retryRec := &usageRecorder{inner: retrySink}
-			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
-				if raw2, perr2 := retrySink.Result(); perr2 == nil {
-					g.logUsage(r, model, prov.Name(), start, retryRec, nil)
-					if txt2 := openaiContentText(raw2); txt2 != "" && !pj.LooksRefused(txt2) {
-						raw = raw2
-						logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
-					} else {
-						logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+	if !pseudotools.HasToolCalls(raw) {
+		if txt := openaiContentText(raw); g.shouldPJRetry(prov.Name(), txt) {
+			if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
+				logx.Infof("gateway", "破甲 failover：chat(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
+				retryBody := pj.ApplyStrategy(stronger, prePJ)
+				if toolsReq {
+					if out, changed := pj.StripTemplate(retryBody); changed {
+						retryBody = out
+					}
+					if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
+						retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
 					}
 				}
-			} else {
-				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+				retrySink := NewAggregateSink(outModel)
+				retryRec := &usageRecorder{inner: retrySink}
+				if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
+					if raw2, perr2 := retrySink.Result(); perr2 == nil {
+						g.logUsage(r, model, prov.Name(), start, retryRec, nil)
+						if pseudo {
+							raw2 = pseudotools.ApplyToResponse(raw2)
+						}
+						txt2 := openaiContentText(raw2)
+						if !pseudotools.HasToolCalls(raw2) && txt2 != "" && pj.LooksRefused(txt2) {
+							logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+						} else {
+							raw = raw2
+							logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
+						}
+					}
+				} else {
+					logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+				}
 			}
 		}
 	}
@@ -975,44 +986,69 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		writeAnthropicError(w, mapClientStatus(perr), "api_error", perr.Msg)
 		return
 	}
+	// 伪工具解析先于破甲判定：思考块里的 <tool_call> 也要还原成 tool_use。
+	if pseudo {
+		raw = pseudotools.ApplyToAnthropicResponse(raw)
+	}
 	// 破甲 failover（Anthropic 形状）：拒答时用最强策略在底稿上重打一次，结果更好才替换
 	// 带 tools 的重试同样走前置段 only。
 	toolsReq := requestHasTools(prePJ)
-	if txt := anthropicRespText(raw); g.shouldPJRetry(prov.Name(), txt) {
-		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
-			logx.Infof("gateway", "破甲 failover：messages(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
-			retryBody := pj.ApplyStrategy(stronger, prePJ)
-			if toolsReq {
-				if out, changed := pj.StripTemplate(retryBody); changed {
-					retryBody = out
-				}
-				if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
-					retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
-				}
-			}
-			retrySink := NewAnthropicAggregateSink(outModel)
-			retryRec := &usageRecorder{inner: retrySink}
-			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
-				if raw2, perr2 := retrySink.Result(); perr2 == nil {
-					g.logUsage(r, model, prov.Name(), start, retryRec, nil)
-					if txt2 := anthropicRespText(raw2); txt2 != "" && !pj.LooksRefused(txt2) {
-						raw = raw2
-						logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
-					} else {
-						logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+	if !anthropicHasToolUse(raw) {
+		if txt := anthropicRespText(raw); g.shouldPJRetry(prov.Name(), txt) {
+			if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
+				logx.Infof("gateway", "破甲 failover：messages(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
+				retryBody := pj.ApplyStrategy(stronger, prePJ)
+				if toolsReq {
+					if out, changed := pj.StripTemplate(retryBody); changed {
+						retryBody = out
+					}
+					if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
+						retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
 					}
 				}
-			} else {
-				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+				retrySink := NewAnthropicAggregateSink(outModel)
+				retryRec := &usageRecorder{inner: retrySink}
+				if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
+					if raw2, perr2 := retrySink.Result(); perr2 == nil {
+						g.logUsage(r, model, prov.Name(), start, retryRec, nil)
+						if pseudo {
+							raw2 = pseudotools.ApplyToAnthropicResponse(raw2)
+						}
+						txt2 := anthropicRespText(raw2)
+						if !anthropicHasToolUse(raw2) && txt2 != "" && pj.LooksRefused(txt2) {
+							logx.Infof("gateway", "破甲 failover：重试仍被拒，返回原结果")
+						} else {
+							raw = raw2
+							logx.Infof("gateway", "破甲 failover：重试成功（策略 %s）", stronger)
+						}
+					}
+				} else {
+					logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
+				}
 			}
 		}
-	}
-	if pseudo {
-		raw = pseudotools.ApplyToAnthropicResponse(raw)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(raw)
 	logx.Infof("gateway", "messages(%s) 完成 %.1fs", model, time.Since(start).Seconds())
+}
+
+// anthropicHasToolUse 判断 Anthropic 非流式响应里是否已带 tool_use 块。
+func anthropicHasToolUse(raw []byte) bool {
+	var resp struct {
+		Content []struct {
+			Type string `json:"type"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &resp) != nil {
+		return false
+	}
+	for _, b := range resp.Content {
+		if b.Type == "tool_use" {
+			return true
+		}
+	}
+	return false
 }
 
 // anthropicRespText 从 Anthropic 非流式响应 JSON 里取全部 text 块拼成文本。

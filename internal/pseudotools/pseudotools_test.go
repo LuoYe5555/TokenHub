@@ -2,6 +2,7 @@ package pseudotools
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -150,6 +151,108 @@ func TestParseTextTolerantTagAndRawNewlines(t *testing.T) {
 	_, calls3 := ParseText("<tool_call>{\"arguments\":{\"command\":\"x\"}}</tool_call>")
 	if calls3 != nil {
 		t.Errorf("缺 name 不应产生调用: %+v", calls3)
+	}
+}
+
+// 线上实测（2026-11-15）：ERNIE 5.5 把整段 JSON 塞进开标签属性，或把标记吐进思考流。
+func TestParseTextAttributeJSON(t *testing.T) {
+	// ① 整段 JSON 塞进 name 属性，主体为空
+	text := "<tool_call name=\"{\"arguments\":{\"command\":\"ls -la\",\"timeoutMs\":300000},\"name\":\"pwsh\"}\"></tool_call>"
+	content, calls := ParseText(text)
+	if strings.TrimSpace(content) != "" {
+		t.Errorf("正文未清理: %q", content)
+	}
+	if len(calls) != 1 || calls[0].Name != "pwsh" {
+		t.Fatalf("calls=%+v", calls)
+	}
+	var a map[string]any
+	if json.Unmarshal([]byte(calls[0].Args), &a) != nil || a["command"] != "ls -la" {
+		t.Errorf("args=%q", calls[0].Args)
+	}
+
+	// ② JSON 里带裸 >，开标签被 [^>]* 在 JSON 中途截断
+	text2 := "<tool_call name=\"{\"arguments\":{\"command\":\"a > b | Out-String\"},\"name\":\"pwsh\"}\"></tool_call>"
+	_, calls2 := ParseText(text2)
+	if len(calls2) != 1 || calls2[0].Name != "pwsh" {
+		t.Fatalf("calls2=%+v", calls2)
+	}
+	var a2 map[string]any
+	if json.Unmarshal([]byte(calls2[0].Args), &a2) != nil || a2["command"] != "a > b | Out-String" {
+		t.Errorf("args2=%q", calls2[0].Args)
+	}
+
+	// ③ name 在属性、arguments 在属性的拆分形态
+	_, calls3 := ParseText("<tool_call name=\"pwsh\" arguments=\"{\"command\":\"dir\"}\"></tool_call>")
+	if len(calls3) != 1 || calls3[0].Name != "pwsh" {
+		t.Fatalf("calls3=%+v", calls3)
+	}
+	var a3 map[string]any
+	if json.Unmarshal([]byte(calls3[0].Args), &a3) != nil || a3["command"] != "dir" {
+		t.Errorf("args3=%q", calls3[0].Args)
+	}
+
+	// ④ name 在属性、JSON 主体缺 name
+	_, calls4 := ParseText("<tool_call name=\"pwsh\">{\"arguments\":{\"command\":\"echo hi\"}}</tool_call>")
+	if len(calls4) != 1 || calls4[0].Name != "pwsh" {
+		t.Fatalf("calls4=%+v", calls4)
+	}
+	var a4 map[string]any
+	if json.Unmarshal([]byte(calls4[0].Args), &a4) != nil || a4["command"] != "echo hi" {
+		t.Errorf("args4=%q", calls4[0].Args)
+	}
+}
+
+// 思考流（reasoning_content）里的标记也要解析、剥离（ERNIE 惯犯行为）。
+func TestApplyToResponseReasoning(t *testing.T) {
+	mk := func(reasoning, content string) []byte {
+		return []byte(`{"choices":[{"message":{"role":"assistant","content":` + strconv.Quote(content) + `,"reasoning_content":` + strconv.Quote(reasoning) + `},"finish_reason":"stop"}]}`)
+	}
+	raw := mk("先看看<tool_call>{\"name\":\"pwsh\",\"arguments\":{\"command\":\"ls\"}}</tool_call>", "")
+	out := ApplyToResponse(raw)
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+				ToolCalls        []struct {
+					Function struct {
+						Name string `json:"name"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(out, &resp) != nil {
+		t.Fatal("输出不合法")
+	}
+	c := resp.Choices[0]
+	if len(c.Message.ToolCalls) != 1 || c.Message.ToolCalls[0].Function.Name != "pwsh" {
+		t.Fatalf("tool_calls=%+v", c.Message.ToolCalls)
+	}
+	if c.Message.ReasoningContent != "先看看" {
+		t.Errorf("思考流清理异常: %q", c.Message.ReasoningContent)
+	}
+	if c.FinishReason != "tool_calls" {
+		t.Errorf("finish_reason=%q", c.FinishReason)
+	}
+	// 思考流有正常文本 + 标记：文本保留、标记剥离
+	out2 := ApplyToResponse(mk("计划：<tool_call>{\"name\":\"f\",\"arguments\":{}}</tool_call>", "正文"))
+	var resp2 struct {
+		Choices []struct {
+			Message struct {
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	json.Unmarshal(out2, &resp2)
+	if resp2.Choices[0].Message.ReasoningContent != "计划：" {
+		t.Errorf("思考正文被误删: %q", resp2.Choices[0].Message.ReasoningContent)
+	}
+	// 无标记时思考流原样保留
+	raw3 := mk("纯思考", "正文")
+	if out3 := ApplyToResponse(raw3); string(out3) != string(raw3) {
+		t.Errorf("无标记时不应改写: %s", out3)
 	}
 }
 

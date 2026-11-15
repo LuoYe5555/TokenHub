@@ -210,6 +210,8 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("GET /api/panel/qwen/browser/poll", p.handleQwenBrowserPoll)
 	api("POST /api/panel/qwen/verify/start", p.handleQwenVerifyStart)
 	api("GET /api/panel/qwen/verify/poll", p.handleQwenVerifyPoll)
+	api("POST /api/panel/ds/browser/start", p.handleDSBrowserStart)
+	api("GET /api/panel/ds/browser/poll", p.handleDSBrowserPoll)
 
 	// 千问风控回调：请求被 WAF punish 时把验证页地址记进账号，
 	// 面板千问卡片随即出现「🛡 过验证」按钮
@@ -574,9 +576,11 @@ func readBody(r *http.Request, v any) error {
 // ── 静态资源 ──
 
 func (p *Panel) serveIndex(w http.ResponseWriter, r *http.Request) {
+	// app.js 引用带构建版本号：exe 更新后 URL 变化，WebView 强制拉新 JS，杜绝旧脚本缓存
+	html := strings.ReplaceAll(string(indexHTML), "{{APPVER}}", config.GitCommit+"-"+config.AppVersion)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write(indexHTML)
+	_, _ = w.Write([]byte(html))
 }
 
 func (p *Panel) serveAppJS(w http.ResponseWriter, r *http.Request) {
@@ -871,8 +875,8 @@ func (p *Panel) handleAccountAdd(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode && in.Provider != store.PQwen && in.Provider != store.PCustom {
-		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode / qwen / custom")
+	if in.Provider != store.PWorkBuddy && in.Provider != store.PTrae && in.Provider != store.PZCode && in.Provider != store.PQwen && in.Provider != store.PCustom && in.Provider != store.PDeepSeek {
+		writeErr(w, 400, "provider 必须是 workbuddy / trae / zcode / qwen / deepseek / custom")
 		return
 	}
 	if in.Provider == store.PCustom {

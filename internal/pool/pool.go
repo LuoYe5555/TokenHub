@@ -64,7 +64,7 @@ func (p *Pool) Providers() map[string]provider.Provider {
 }
 
 // shortAlias 模型前缀别名。
-var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom, "oc": store.POpencode, "kilo": store.PFree, "opencode": store.POpencode}
+var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom, "oc": store.POpencode, "kilo": store.PFree, "opencode": store.POpencode, "ds": store.PDeepSeek, "deepseekweb": store.PDeepSeek, "ds-web": store.PDeepSeek}
 
 // customBySlug 按 slug 前缀找外部 API 账号（大小写不敏感；保留名不作为 slug）。
 func (p *Pool) customBySlug(slug string) *store.Account {

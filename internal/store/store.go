@@ -20,6 +20,7 @@ const (
 	PCustom    = "custom"
 	PFree      = "free"
 	POpencode  = "opencode"
+	PDeepSeek  = "deepseek"
 )
 
 // QuotaPart 额度明细（权益包 / 额度窗口）。

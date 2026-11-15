@@ -60,14 +60,16 @@ func (g *Gateway) gateChat(ctx context.Context, provName, model, rawModel string
 		g.mergeUsage(rec, bufRec)
 		return perr
 	}
+	// 伪工具解析先于判定：思考流里也可能藏着 <tool_call>（ERNIE 惯犯），
+	// 解析出的调用会落进 raw 的 tool_calls，下面靠 HasToolCalls 放行。
+	if pseudo {
+		raw = pseudotools.ApplyToResponse(raw)
+	}
 	txt := openaiContentText(raw)
 
 	// 正文正常（或有工具调用）→ 放行
-	if buf.sawTool() || (txt != "" && !pj.LooksRefused(txt)) {
+	if buf.sawTool() || pseudotools.HasToolCalls(raw) || (txt != "" && !pj.LooksRefused(txt)) {
 		g.mergeUsage(rec, bufRec)
-		if pseudo {
-			raw = pseudotools.ApplyToResponse(raw)
-		}
 		flushOpenAIStream(outSink, raw)
 		return nil
 	}
@@ -89,13 +91,13 @@ func (g *Gateway) gateChat(ctx context.Context, provName, model, rawModel string
 		if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
 			raw2, perr2 := retryBuf.inner.Result()
 			if perr2 == nil {
+				if pseudo {
+					raw2 = pseudotools.ApplyToResponse(raw2)
+				}
 				txt2 := openaiContentText(raw2)
-				if retryBuf.sawTool() || (txt2 != "" && !pj.LooksRefused(txt2)) {
+				if retryBuf.sawTool() || pseudotools.HasToolCalls(raw2) || (txt2 != "" && !pj.LooksRefused(txt2)) {
 					logx.Infof("gateway", "破甲流式门：重试成功（策略 %s）", stronger)
 					g.mergeUsage(rec, retryRec)
-					if pseudo {
-						raw2 = pseudotools.ApplyToResponse(raw2)
-					}
 					flushOpenAIStream(outSink, raw2)
 					return nil
 				}
@@ -107,9 +109,6 @@ func (g *Gateway) gateChat(ctx context.Context, provName, model, rawModel string
 	}
 	// 兜底：flush 原流内容（拒答文本也让客户端看到，不吞内容）
 	g.mergeUsage(rec, bufRec)
-	if pseudo {
-		raw = pseudotools.ApplyToResponse(raw)
-	}
 	flushOpenAIStream(outSink, raw)
 	return nil
 }
@@ -185,13 +184,15 @@ func (g *Gateway) gateChatAnthropic(ctx context.Context, provName, model, rawMod
 		g.mergeUsage(rec, bufRec)
 		return perr
 	}
+	// 解析先于判定：思考流里也可能藏着 <tool_call>，解析出的调用落进 raw 的
+	// tool_calls，下面靠 HasToolCalls 放行，不再误判「拒答/空」触发重试。
+	if pseudo {
+		raw = pseudotools.ApplyToResponse(raw)
+	}
 	txt := openaiContentText(raw)
 
-	if buf.sawTool() || (txt != "" && !pj.LooksRefused(txt)) {
+	if buf.sawTool() || pseudotools.HasToolCalls(raw) || (txt != "" && !pj.LooksRefused(txt)) {
 		g.mergeUsage(rec, bufRec)
-		if pseudo {
-			raw = pseudotools.ApplyToResponse(raw)
-		}
 		flushAnthropicStream(outSink, raw)
 		return nil
 	}
@@ -212,13 +213,13 @@ func (g *Gateway) gateChatAnthropic(ctx context.Context, provName, model, rawMod
 		if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
 			raw2, perr2 := retryBuf.inner.Result()
 			if perr2 == nil {
+				if pseudo {
+					raw2 = pseudotools.ApplyToResponse(raw2)
+				}
 				txt2 := openaiContentText(raw2)
-				if retryBuf.sawTool() || (txt2 != "" && !pj.LooksRefused(txt2)) {
+				if retryBuf.sawTool() || pseudotools.HasToolCalls(raw2) || (txt2 != "" && !pj.LooksRefused(txt2)) {
 					logx.Infof("gateway", "破甲流式门：重试成功（策略 %s）", stronger)
 					g.mergeUsage(rec, retryRec)
-					if pseudo {
-						raw2 = pseudotools.ApplyToResponse(raw2)
-					}
 					flushAnthropicStream(outSink, raw2)
 					return nil
 				}
@@ -229,9 +230,6 @@ func (g *Gateway) gateChatAnthropic(ctx context.Context, provName, model, rawMod
 		}
 	}
 	g.mergeUsage(rec, bufRec)
-	if pseudo {
-		raw = pseudotools.ApplyToResponse(raw)
-	}
 	flushAnthropicStream(outSink, raw)
 	return nil
 }

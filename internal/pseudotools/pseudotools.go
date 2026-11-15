@@ -38,6 +38,7 @@ func protocolPrompt(tools []any) string {
 	b.WriteString("输出该标记后立即停止，等待系统以 <tool_result name=\"工具名\">…</tool_result> 返回结果后再继续回答。\n")
 	b.WriteString("不需要工具时直接正常回答，绝不输出 <tool_call> 标记。arguments 必须是合法 JSON 对象。\n")
 	b.WriteString("只允许上述 JSON 标记格式，严禁输出 <invoke>、<parameter> 等 XML 风格的工具调用。\n")
+	b.WriteString("工具调用标记必须写在最终回复正文里，严禁放进思考/推理过程，也不要把 JSON 塞进标签属性。\n")
 	b.WriteString("## 可用工具\n")
 	for _, tv := range tools {
 		t, ok := tv.(map[string]any)
@@ -394,10 +395,80 @@ func parseCallPayload(payload string) (name, args string, ok bool) {
 	return name, args, true
 }
 
-// ParseText 从模型输出里抽取全部工具调用标记——兼容三种形态：
+// trimToLastBrace 把候选 JSON 截到最后一个 } 为止，去掉尾巴上的标签残渣（如 `">`）。
+func trimToLastBrace(s string) string {
+	if j := strings.LastIndex(s, "}"); j >= 0 {
+		return s[:j+1]
+	}
+	return s
+}
+
+// parseTagCall 解析单个 <tool_call …>…</tool_call> 标记。除约定的主体 JSON 外，
+// 还兼容三种常见畸形：
+// ① 整段 JSON 被塞进开标签属性：<tool_call name="{"arguments":{…},"name":"pwsh"}">
+// ② 名字在属性、参数在属性或主体：<tool_call name="pwsh" arguments="{…}">
+// ③ JSON 里含裸 >，开标签被 [^>]* 在 JSON 中途截断
+func parseTagCall(openTagText, payload string) (Call, bool) {
+	var cands []string
+	addCand := func(s string) {
+		if s = strings.TrimSpace(s); s != "" {
+			cands = append(cands, trimToLastBrace(s))
+		}
+	}
+	// 属性携带 JSON 的重建候选优先——payload 单独解析在截断场景会走 reName
+	// 兜底「降级成功」（name 抠到但 arguments 丢失），必须让完整重建先试。
+	if k := strings.Index(openTagText, "{"); k >= 0 {
+		seg := openTagText[k:] // 若截断发生在 JSON 中途，被 [^>]* 吃掉的 > 就在 seg 尾部
+		if j := strings.LastIndex(seg, "}"); j >= 0 {
+			addCand(seg[:j+1])   // 属性携带完整 JSON
+		}
+		addCand(seg + payload)       // 截断拼接
+		addCand(seg + ">" + payload) // 截断拼接（> 未含在 seg 尾部时补一个）
+	}
+	addCand(payload)
+	for _, c := range cands {
+		if name, args, ok := parseCallPayload(c); ok {
+			return Call{Name: name, Args: args}, true
+		}
+	}
+	// JSON 抠得出来但没带 name：名字从标签属性或全文里补
+	var name string
+	if m := invokeNameRe.FindStringSubmatch(openTagText); m != nil {
+		name = m[1]
+		if name == "" {
+			name = m[2]
+		}
+	}
+	if strings.ContainsAny(name, "{}\"'<>") { // 属性值里塞 JSON 时的误抓（name="{…）
+		name = ""
+		if nm := reName.FindStringSubmatch(openTagText + payload); nm != nil {
+			name = nm[1]
+		}
+	}
+	if name == "" {
+		return Call{}, false
+	}
+	args := "{}"
+	for _, c := range cands { // 任意一个候选能解出 JSON 对象就当 arguments
+		var obj map[string]any
+		if json.Unmarshal([]byte(repairJSON(c)), &obj) == nil && obj != nil {
+			if a, has := obj["arguments"]; has { // 主体是 {arguments:{…}} 形状时取子对象
+				if raw, err := json.Marshal(a); err == nil {
+					args = string(raw)
+				}
+			} else if raw, err := json.Marshal(obj); err == nil {
+				args = string(raw)
+			}
+			break
+		}
+	}
+	return Call{Name: name, Args: args}, true
+}
+
+// ParseText 从模型输出里抽取全部工具调用标记——兼容多种形态：
 // ① 约定的 <tool_call>{JSON}</tool_call>（tag 容忍 _xxx 后缀）；
 // ② 模型自带的 <invoke>/<parameter> XML 风格；
-// ③ JSON 载荷含裸换行等常见畸形，自动修复后解析。
+// ③ JSON 载荷含裸换行、属性携带 JSON、开标签中途截断等常见畸形，自动修复后解析。
 func ParseText(text string) (content string, calls []Call) {
 	for _, w := range wrapperTokens {
 		text = strings.ReplaceAll(text, w, "")
@@ -422,13 +493,28 @@ func ParseText(text string) (content string, calls []Call) {
 			text = ""
 			break
 		}
-		payload := strings.TrimSpace(rest[:cl[0]])
+		payload := rest[:cl[0]] // 不预 TrimSpace：截断拼接时接缝处的空格要保留
 		text = rest[cl[1]:]
-		if name, args, ok := parseCallPayload(payload); ok {
-			calls = append(calls, Call{Name: name, Args: args})
+		if c, ok := parseTagCall(openTagText, payload); ok {
+			calls = append(calls, c)
 		}
 	}
 	return strings.TrimSpace(b.String()), calls
+}
+
+// HasToolCalls 判断聚合响应（OpenAI 形状）里是否已带工具调用。
+func HasToolCalls(raw []byte) bool {
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				ToolCalls []any `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(raw, &resp) != nil {
+		return false
+	}
+	return len(resp.Choices) > 0 && len(resp.Choices[0].Message.ToolCalls) > 0
 }
 
 // ApplyToResponse 聚合响应改写：把 content 里的标记还原成标准 tool_calls。
@@ -452,6 +538,18 @@ func ApplyToResponse(raw []byte) []byte {
 	}
 	text, _ := msg["content"].(string)
 	content, calls := ParseText(text)
+	// 思考流（reasoning_content）同样可能带标记：ERNIE 等爱把 <tool_call> 吐进
+	// 思考里，正文反而空着。一并解析、剥离，解析出的调用合并进 calls。
+	if reason, ok := msg["reasoning_content"].(string); ok && reason != "" {
+		if rContent, rCalls := ParseText(reason); rContent != reason || len(rCalls) > 0 {
+			calls = append(calls, rCalls...)
+			if rContent == "" {
+				delete(msg, "reasoning_content") // 思考里只有标记：整段清掉
+			} else {
+				msg["reasoning_content"] = rContent
+			}
+		}
+	}
 	if len(calls) == 0 {
 		return raw
 	}
@@ -488,21 +586,30 @@ func ApplyToAnthropicResponse(raw []byte) []byte {
 	if len(blocks) == 0 {
 		return raw
 	}
-	var text string
+	var text, thinking string
 	for _, bv := range blocks {
 		b, ok := bv.(map[string]any)
 		if !ok {
 			continue
 		}
-		if t, _ := b["type"].(string); t == "text" {
+		switch t, _ := b["type"].(string); t {
+		case "text":
 			text += b["text"].(string) + "\n"
+		case "thinking": // 思考块同样可能带标记，一并解析
+			th, _ := b["thinking"].(string)
+			thinking += th + "\n"
 		}
 	}
 	content, calls := ParseText(text)
+	thinkContent, thinkCalls := ParseText(thinking)
+	calls = append(calls, thinkCalls...)
 	if len(calls) == 0 {
 		return raw
 	}
 	out := []any{}
+	if thinkContent != "" {
+		out = append(out, map[string]any{"type": "thinking", "thinking": thinkContent})
+	}
 	if content != "" {
 		out = append(out, map[string]any{"type": "text", "text": content})
 	}

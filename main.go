@@ -24,9 +24,10 @@ import (
 	"tokenhub/internal/pool"
 	"tokenhub/internal/pricing"
 	"tokenhub/internal/provider/custom"
+	"tokenhub/internal/provider/deepseek"
 	"tokenhub/internal/provider/free"
-	"tokenhub/internal/provider/opencode"
 	"tokenhub/internal/provider/ollama"
+	"tokenhub/internal/provider/opencode"
 	"tokenhub/internal/provider/qwen"
 	"tokenhub/internal/provider/trae"
 	"tokenhub/internal/provider/workbuddy"
@@ -86,6 +87,7 @@ func main() {
 	pl.Register(custom.New(cfg))
 	pl.Register(free.New(cfg))
 	pl.Register(opencode.New(cfg))
+	pl.Register(deepseek.New(cfg))
 	// 免凭据 provider 的伪账号同步创建（不能放 goroutine：启动头几秒
 	// AllModels 若查不到账号会用 SeedModels 兜底并被 60s 缓存钉住）
 	if len(st.ByProvider(store.POllama)) == 0 {

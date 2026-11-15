@@ -50,7 +50,7 @@ const I18N = {
     acct_title: '账号管理', acct_sub: '多账号登录、额度查看与自动领取',
     api_title: 'API 接口', api_sub: 'OpenAI / Anthropic 兼容端点与接入示例',
     api_compat: '兼容端点：POST /v1/chat/completions（OpenAI）、POST /v1/messages（Anthropic）、GET /v1/models。鉴权方式：Authorization: Bearer <API Key>',
-    api_models: '可用模型', reload: '刷新',
+    api_models: '可用模型', models_short: '个模型', reload: '刷新',
     models_search: '搜索模型…', models_total: '共 {x} 个模型', models_copy: '点击复制',
     models_ctx: '上下文', models_think: '思考', models_vision: '图片', models_tools: '工具', models_credit_rate: '积分倍率',
     models_out: '单次输出', models_rate: '倍速', models_status: '状态', models_name: '模型',
@@ -111,6 +111,16 @@ const I18N = {
     custom_edit: '编辑',
     custom_meta_addr: '地址',
     login_qw_title: '添加千问网页版账号',
+    login_ds_title: '添加 DeepSeek 网页版账号',
+    ds_b_import: '一键浏览器导入（推荐）', ds_b_starting: '正在打开浏览器…',
+    ds_b_waiting: '等待登录：请在弹出的浏览器里登录 chat.deepseek.com（手机号/邮箱验证码），登录成功后自动导入',
+    ds_b_nobrowser: '未找到本机浏览器（Edge/Chrome）', ds_b_timeout: '导入超时：请重试，或改用手动粘贴 Token',
+    ds_b_manual_divider: '—— 或手动粘贴 Token ——',
+    login_ds_token: 'userToken（localStorage 里 userToken 的 token 字段）',
+    login_ds_token_ph: 'F12 → Application → Local Storage → chat.deepseek.com → userToken',
+    login_ds_nick: '备注名（可选）', login_ds_save: '保存账号', login_ds_saved: 'DeepSeek 账号已添加',
+    prov_deepseek: 'DeepSeek 网页版',
+    ds_b_start: '打开浏览器登录',
     login_qw_s1: '浏览器登录 chat.qwen.ai（网页版对话）',
     login_qw_s2: 'F12 → 网络(Network) → 随便发一条消息 → 找到 chat/completions 请求 → 复制请求头 Authorization 里 Bearer 后面的令牌',
     login_qw_token: 'Access Token（Bearer 后面那串）', login_qw_nick: '备注名（可选）',
@@ -279,7 +289,7 @@ const I18N = {
     acct_title: 'Accounts', acct_sub: 'Multi-account login, quota view and auto claiming',
     api_title: 'API', api_sub: 'OpenAI / Anthropic compatible endpoints & examples',
     api_compat: 'Endpoints: POST /v1/chat/completions (OpenAI), POST /v1/messages (Anthropic), GET /v1/models. Auth: Authorization: Bearer <API Key>',
-    api_models: 'Models', reload: 'Reload',
+    api_models: 'Models', models_short: 'models', reload: 'Reload',
     models_search: 'Search models…', models_total: '{x} models in total', models_copy: 'click to copy',
     models_ctx: 'ctx', models_think: 'reasoning', models_vision: 'vision', models_tools: 'tools', models_credit_rate: 'credit rate',
     models_out: 'max output', models_rate: 'rate', models_status: 'status', models_name: 'model',
@@ -342,6 +352,16 @@ const I18N = {
     custom_meta_addr: 'URL',
     share_limit_ol: 'tokens limit',
     login_qw_title: 'Add Qwen Web Account',
+    login_ds_title: 'Add DeepSeek Web Account',
+    ds_b_import: 'One-click browser import (recommended)', ds_b_starting: 'Launching browser…',
+    ds_b_waiting: 'Waiting for login: sign in to chat.deepseek.com in the popup browser (phone/email code); it will be imported automatically',
+    ds_b_nobrowser: 'No local browser (Edge/Chrome) found', ds_b_timeout: 'Import timed out: please retry, or paste the token manually',
+    ds_b_manual_divider: '—— Or paste token manually ——',
+    login_ds_token: 'userToken (the "token" field of localStorage userToken)',
+    login_ds_token_ph: 'F12 → Application → Local Storage → chat.deepseek.com → userToken',
+    login_ds_nick: 'Nickname (optional)', login_ds_save: 'Save account', login_ds_saved: 'DeepSeek account added',
+    prov_deepseek: 'DeepSeek Web',
+    ds_b_start: 'Open browser to sign in',
     login_qw_s1: 'Sign in at chat.qwen.ai in your browser',
     login_qw_s2: 'F12 → Network → send any message → find the chat/completions request → copy the token after "Bearer " in the Authorization request header',
     login_qw_token: 'Access Token (string after Bearer)', login_qw_nick: 'Nickname (optional)',
@@ -917,6 +937,8 @@ let cfgData = null;
 async function loadOverview() {
   try {
     overview = await api('/api/panel/overview');
+    // 渠道卡片的模型数：并发拉模型清单（服务端 60s 缓存，开销小）；失败不影响主渲染
+    api('/api/panel/models').then(r => { modelCache = r.models || {}; renderProviders(); }).catch(() => {});
     $('#dashBase').value = `http://127.0.0.1:${overview.port}/v1`;
     apiBaseURL = `http://127.0.0.1:${overview.port}`;
     $('#apiBase').value = apiBaseURL;
@@ -943,6 +965,7 @@ function providerMeta(name) {
     trae: { label: t('prov_trae'), icon: '/icons/trae.png', color: '#4f8cff' },
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
     qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
+    deepseek: { label: t('prov_deepseek'), icon: '/icons/deepseek.svg', color: '#4d6bfe' },
     ollama: { label: t('prov_ollama'), icon: '/icons/ollama.png', color: '#9aa0a6' },
     free: { label: t('prov_free'), icon: '/icons/free.png', color: '#2dd4bf' },
     opencode: { label: t('prov_opencode'), icon: '/icons/opencode.png', color: '#f59e0b' },
@@ -960,7 +983,7 @@ function renderProviders() {
   if (!overview) return;
   const box = $('#provCards');
   box.innerHTML = '';
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'deepseek', 'ollama', 'free', 'opencode']) {
     const s = (overview.summary && overview.summary[name]) || { accounts: 0, active: 0, remain: 0, total: 0, unit: '' };
     const meta = providerMeta(name);
     // 客户端软件版本（仅 workbuddy/trae/zcode 提供）
@@ -970,10 +993,17 @@ function renderProviders() {
       : '';
     const card = document.createElement('div');
     card.className = 'card stat';
-    // qwen 无固定额度、ollama 为本地推理：不显示数字，用占位符保持卡片高度一致
-    const numHtml = (name === 'ollama' || name === 'qwen')
-      ? `<div class="num" style="opacity:.3">—</div>`
-      : `<div class="num">${fmtNum(s.remain)}<small>${esc(s.unit || '')}</small></div>`;
+    // 中间大数字：额度制渠道（有额度单位，如 ZCode 0 Token 用完也照显）显示剩余额度；
+    // 非额度渠道（deepseek/qwen/ollama/kilo/opencode）显示 x个模型
+    // 注意：unit 字段缺失时是 undefined，必须先归一为 ''，否则 undefined !== '' 恒真
+    const models = (modelCache || {})[name];
+    const mCount = Array.isArray(models) ? models.length : null;
+    const unit = s.unit || '';
+    const numHtml = unit !== ''
+      ? `<div class="num">${fmtNum(s.remain)}<small>${esc(unit)}</small></div>`
+      : (mCount !== null && mCount > 0
+        ? `<div class="num">${mCount}<small>${t('models_short')}</small></div>`
+        : `<div class="num" style="opacity:.3">—</div>`);
     card.innerHTML = `
       <div class="label"><span>${picoImg(name)} ${esc(meta.label)}${verHtml}</span><span class="dot ${s.active > 0 ? 'on' : 'off'}"></span></div>
       ${numHtml}
@@ -1122,7 +1152,7 @@ function renderAccounts() {
   const box = $('#acctSections');
   box.innerHTML = '';
   renderZcodePending(box);
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode', 'custom']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'deepseek', 'ollama', 'free', 'opencode', 'custom']) {
     const meta = providerMeta(name);
     const list = (overview.accounts || []).filter(a => a.provider === name);
     const sec = document.createElement('div');
@@ -1153,7 +1183,7 @@ function acctCard(a) {
   el.className = 'acct';
   const st = acctStatus(a);
   const q = a.lastQuota || a.quota;
-  const noCloud = a.provider === 'qwen' || a.provider === 'ollama' || a.provider === 'free' || a.provider === 'opencode'; // 本地/无固定额度：不显示额度条与凭据操作
+  const noCloud = a.provider === 'qwen' || a.provider === 'deepseek' || a.provider === 'ollama' || a.provider === 'free' || a.provider === 'opencode'; // 本地/无固定额度：不显示额度条与凭据操作
   let quotaHtml = '';
   if (noCloud) {
     quotaHtml = ''; // 千问网页版 / 本机 Ollama：不显示"剩余额度/未查询"
@@ -1197,6 +1227,7 @@ function acctCard(a) {
       ${a.provider === 'zcode' ? `<button class="sm" data-act="plans">🎪 ${t('zc_plans')}</button>
       <button class="sm" data-act="raw">🧾 ${t('act_raw')}</button>` : ''}
       ${a.provider === 'qwen' && a.extra && a.extra.punishURL ? `<button class="sm danger" data-act="verify" title="${esc(t('qw_verify_tip'))}">🛡 ${t('qw_verify')}</button>` : ''}
+      ${a.provider === 'deepseek' ? `<button class="sm" data-act="refresh" title="校验令牌有效性">🔑 ${t('act_refresh')}</button>` : ''}
       ${a.provider === 'custom' ? `<button class="sm" data-act="editcustom">✏️ ${t('custom_edit')}</button>` : ''}
       <button class="sm" data-act="toggle">${a.enabled ? '⏸' : '▶'} ${a.enabled ? t('act_disable') : t('act_enable')}</button>
       <button class="sm danger" data-act="delete">🗑</button>
@@ -1299,6 +1330,7 @@ function openAddModal(provider) {
   if (provider === 'trae') return addModalTrae();
   if (provider === 'zcode') return addModalZcode();
   if (provider === 'qwen') return addModalQwen();
+  if (provider === 'deepseek') return addModalDeepseek();
   if (provider === 'custom') return addModalCustom(null);
 }
 
@@ -1631,6 +1663,59 @@ function addModalQwen() {
   });
 }
 
+/* DeepSeek Web */
+function addModalDeepseek() {
+  showModal(t('login_ds_title'), `
+    <button class="primary" id="dsBrowser">🌐 ${t('ds_b_import')}</button>
+    <div class="hint" id="dsStatus"></div>
+    <div class="hint" style="margin-top:12px;opacity:.7">${t('ds_b_manual_divider')}</div>
+    <div class="field"><label>${t('login_ds_token')}</label>
+      <input type="password" id="dsToken" placeholder="${esc(t('login_ds_token_ph'))}">
+    </div>
+    <div class="field"><label>${t('login_ds_nick')}</label><input type="text" id="dsNick"></div>
+    <button id="dsSave">${t('login_ds_save')}</button>
+  `);
+  $('#dsBrowser').addEventListener('click', async () => {
+    const st = $('#dsStatus');
+    if (!st) return;
+    try {
+      st.textContent = t('ds_b_starting');
+      const r0 = await post('/api/panel/ds/browser/start', {});
+      if (!r0 || !r0.ok) {
+        st.textContent = r0 && r0.status === 'no-browser' ? t('ds_b_nobrowser') : t('ds_b_timeout');
+        return;
+      }
+      st.textContent = t('ds_b_waiting');
+      for (let i = 0; i < 300; i++) {
+        await new Promise(res => setTimeout(res, 2000));
+        if (!document.getElementById('dsStatus')) return; // 弹窗已关闭，停止轮询
+        const r = await api('/api/panel/ds/browser/poll');
+        if (r && r.ok) {
+          toast(t('login_ds_saved'));
+          loadOverview();
+          closeModal();
+          return;
+        }
+      }
+      if (document.getElementById('dsStatus')) st.textContent = t('ds_b_timeout');
+    } catch (e) { if (document.getElementById('dsStatus')) st.textContent = e.message; }
+  });
+  $('#dsSave').addEventListener('click', async () => {
+    const token = $('#dsToken').value.trim();
+    if (!token) { $('#dsStatus').textContent = t('login_ds_token'); return; }
+    try {
+      await post('/api/panel/account', {
+        provider: 'deepseek',
+        accessToken: token,
+        nickname: $('#dsNick').value.trim(),
+      });
+      toast(t('login_ds_saved'));
+      loadOverview();
+      setTimeout(closeModal, 800);
+    } catch (e) { $('#dsStatus').textContent = e.message; }
+  });
+}
+
 /* External custom API */
 function addModalCustom(a) {
   const isEdit = !!a;
@@ -1720,7 +1805,7 @@ function manualModal(provider) {
   showModal(t('manual_title'), `
     <div class="field"><label>${t('manual_provider')}</label>
       <select id="mProvider">
-        ${['workbuddy', 'trae', 'zcode', 'qwen'].map(pv => `<option value="${pv}" ${pv === provider ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}
+        ${['workbuddy', 'trae', 'zcode', 'qwen', 'deepseek'].map(pv => `<option value="${pv}" ${pv === provider ? 'selected' : ''}>${providerMeta(pv).label}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>${t('manual_realm')}</label><input type="text" id="mRealm" placeholder="cn / global / bigmodel / zai"></div>
@@ -1799,7 +1884,7 @@ async function renderModels(cached) {
   let html = '';
   let any = false;
   let total = 0;
-  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'ollama', 'free', 'opencode']) {
+  for (const name of ['workbuddy', 'trae', 'zcode', 'qwen', 'deepseek', 'ollama', 'free', 'opencode']) {
     const list = all[name] || [];
     if (!list.length) continue;
     any = true;

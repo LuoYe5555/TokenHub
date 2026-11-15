@@ -1,6 +1,6 @@
 # TokenHub
 
-把 **Trae**、**WorkBuddy / CodeBuddy**、**ZCode（智谱 GLM）**、**千问网页版**、**Ollama 本地模型** 以及多个**免费渠道**（Kilo、OpenCode）的额度，转换成本地 **OpenAI / Anthropic 兼容 API**，供任意第三方客户端（Cherry Studio、Claude Code、Cline、OpenAI SDK 等）使用。
+把 **Trae**、**WorkBuddy / CodeBuddy**、**ZCode（智谱 GLM）**、**千问网页版**、**DeepSeek 网页版**、**Ollama 本地模型** 以及多个**免费渠道**（Kilo、OpenCode）的额度，转换成本地 **OpenAI / Anthropic 兼容 API**，供任意第三方客户端（Cherry Studio、Claude Code、Cline、OpenAI SDK 等）使用。
 
 > ⚠️ **仅限个人自用，请勿贩卖或商用。** 凭据只保存在本机。
 
@@ -22,6 +22,7 @@
    - **Trae**：授权页扫码登录 → 自动回填（回调页打不开时把地址栏链接粘贴进面板）
    - **ZCode**：选 BigModel / Z.ai 渠道 → 授权登录，或一键从本机 ZCode 客户端导入
    - **千问**：点「一键浏览器导入」→ 在弹出的窗口里登录 chat.qwen.ai → 自动完成（令牌过期自动续期）；也可手动粘贴 Token
+   - **DeepSeek 网页版**：点「一键浏览器导入」→ 登录 chat.deepseek.com → 自动抓取凭据建号；也可手动粘贴 userToken
    - **Kilo / OpenCode**：免注册免费渠道，添加即用，无需凭据
 3. 面板 → **API 接口**：复制 Base URL 与 API Key 填进任意客户端
 
@@ -33,20 +34,23 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 ## 模型与路由
 
 - `GET /v1/models` 聚合全部提供商的模型列表（含徽章标注：倍率、上下文、能力位）
-- `model` 支持 **前缀指定提供商**：`trae:glm-5.2`、`workbuddy:claude-sonnet-4.6`、`zcode:glm-5.3`、`qwen:qwen3.8-max`、`kilo:kimi-k3`、`opencode:glm-5.3-flash-free`、`ollama:qwen3:32b`（简写 `qw:` / `qwen-web:` / `kilo:` = `free:` 也认）
+- `model` 支持 **前缀指定提供商**：`trae:glm-5.2`、`workbuddy:claude-sonnet-4.6`、`zcode:glm-5.3`、`qwen:qwen3.8-max`、`deepseek:deepseek-chat`、`kilo:kimi-k3`、`opencode:glm-5.3-flash-free`、`ollama:qwen3:32b`（简写 `qw:` / `qwen-web:` / `ds:` / `deepseekweb:` / `kilo:` = `free:` 也认）
 - 不带前缀按 `defaultProvider` 与 `modelRoutes` 路由（面板 → 设置）
-- 思考控制（千问）：模型名加后缀 `-thinking` / `-no-thinking`
+- 思考控制（千问 / DeepSeek 网页版）：模型名加后缀 `-thinking` / `-no-thinking`
 - 没有工具能力的模型会自动走 **伪工具协议**（对客户端完全透明），带工具的模型直接透传
 
 ## 免费渠道
 
 | 渠道 | 说明 | 限制 |
 |---|---|---|
+| **DeepSeek 网页版** | 反代 chat.deepseek.com，模型同 API（V4.1-Flash / 思考模式） | 免费无明确额度；高峰期「服务器繁忙」自动按限流处理换号重试 |
 | **Kilo**（free 池） | 公共免费网关，无需注册 | 按模型全网共享 1000 次/天（UTC 零点重置） |
 | **OpenCode** | 免费档模型，无需注册 | 会话级配额，配额类失败自动换身份重试 |
 
+- DeepSeek 网页版自动完成 PoW 工作量证明（DeepSeekHashV1，多核并行求解 <10ms），客户端无感；带工具的请求自动走伪工具协议
 - OpenCode 支持 **多出口代理轮换**：`config.json` 的 `ocProxies` 填入代理列表，出口被限自动切换（冷却 30 分钟起，尊重 Retry-After）
 - 免费模型可用性波动属正常，账号池会自动冷却切换
+- ⚠️ 网页反代属灰色地带，账号有风控风险，建议别拿主力号重负载挂
 
 ## 外部 API（自定义接入）
 
@@ -76,7 +80,7 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 | WorkBuddy 国际 | 无签到接口，可选极小对话保活 | 关闭 |
 | Trae | 每日签到（每号每天 +100 积分） | 开启 |
 | ZCode | 活动套餐轮询领取（每 30 分钟） | 开启 |
-| 千问 / Ollama / 免费渠道 | 无签到/领取接口 | — |
+| 千问 / DeepSeek / Ollama / 免费渠道 | 无签到/领取接口 | — |
 
 需要验证码的 ZCode 活动会弹窗处理或记录在签到消息里，可手动领取。
 
@@ -89,7 +93,7 @@ API Key  : sk-th-xxxxxxxxxxxxxxxx           （面板可重新生成）
 ## 配置与数据
 
 - 配置：`data\config.json`（端口 `8687`、`defaultProvider`、自动签到开关、`ocProxies` 代理池、上游地址覆盖等，均有注释）
-- 数据：账号凭据 `data\accounts.json`、分享钥匙 `data\shares.json`、日志 `data\logs\`、插件 `data\plugins\`——删除 `data\` 即卸载
+- 数据：账号凭据 `data\accounts.json`、分享钥匙 `data\shares.json`、日志 `data\logs\`、插件 `data\plugins\`、浏览器导入专用配置 `data\qwen-profile\` 与 `data\deepseek-profile\`——删除 `data\` 即卸载
 - 端口占用：改 `config.json` 的 `port`，或启动参数 `-port 8688`
 
 ## 从源码构建
