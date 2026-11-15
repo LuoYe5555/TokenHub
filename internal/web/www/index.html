@@ -8,7 +8,7 @@
 <style>
 :root{
   --bg:#0e1014; --panel:#14171d; --card:#191d26; --card2:#1f2430;
-  --border:#272d3a; --text:#e7eaf0; --muted:#8b93a5; --accent:#4f8cff;
+  --border:#272d3a; --text:#e7eaf0; --muted:#98a1b3; --accent:#4f8cff;
   --accent2:#6ea1ff; --green:#3ad98a; --amber:#f2b544; --red:#f36c6c;
   --radius:12px; --mono:'Cascadia Mono',Consolas,'Courier New',monospace;
 }
@@ -16,8 +16,10 @@
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--text);
-  font-family:-apple-system,'Segoe UI','Microsoft YaHei',Roboto,'Noto Sans SC',sans-serif;
-  font-size:14px; display:flex; overflow:hidden;
+  font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei',system-ui,-apple-system,sans-serif;
+  font-size:14px; line-height:1.55; display:flex; overflow:hidden;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility; font-synthesis-weight:none;
 }
 /* ── 侧栏 ── */
 #sidebar{
@@ -57,12 +59,12 @@ h1{font-size:20px;margin-bottom:4px}
 .grid{display:grid;gap:12px}
 .grid.c3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .stat .label{color:var(--muted);font-size:12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
-.stat .num{font-size:26px;font-weight:700}
+.stat .num{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
 .stat .num small{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .dot.on{background:var(--green)} .dot.off{background:var(--muted)}
 .pico{width:20px;height:20px;border-radius:6px;vertical-align:-4px;margin-right:2px;object-fit:cover}
-.pver{font-size:11px;font-weight:400;color:var(--muted);opacity:.75;margin-left:6px;border:1px solid var(--line,#2a2f3a);border-radius:8px;padding:0 6px;line-height:16px}
+.pver{font-size:11px;font-weight:400;color:var(--muted);opacity:.85;margin-left:6px;border:1px solid var(--line,#2a2f3a);border-radius:8px;padding:0 6px;line-height:16px}
 h2 .pico{width:22px;height:22px;border-radius:7px;vertical-align:-5px;object-fit:cover}
 /* 按钮 */
 button{
@@ -116,7 +118,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
   font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-all;color:#c9d4e8;position:relative}
 .codebox .copy{position:absolute;top:8px;right:8px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.chip{font-family:var(--mono);font-size:11.5px;background:var(--card2);border:1px solid var(--border);
+.chip{font-family:var(--mono);font-size:12px;background:var(--card2);border:1px solid var(--border);
   border-radius:6px;padding:3px 8px;color:var(--muted)}
 .chip b{color:var(--text);font-weight:600}
 /* 可用模型分组 */
@@ -130,7 +132,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .mgroup-head{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none;transition:background .15s}
 .mgroup-head:hover{background:rgba(255,255,255,.045)}
 .mgroup-head b{font-size:13px}
-.mgroup-head .mtri{font-size:10px;opacity:.55;transition:transform .15s;line-height:1}
+.mgroup-head .mtri{font-size:10px;opacity:.7;transition:transform .15s;line-height:1}
 .mgroup.open .mgroup-head .mtri{transform:rotate(180deg)}
 .mgroup-body{display:none;border-top:1px solid var(--border)}
 .mgroup.open .mgroup-body{display:block}
@@ -138,7 +140,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .mchip:hover{border-color:var(--accent)}
 /* 可用模型表格 */
 .mtable{width:100%;border-collapse:collapse;font-size:12.5px}
-.mtable th{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap;user-select:none}
+.mtable th{font-size:11.5px;font-weight:600;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap;user-select:none;letter-spacing:.02em}
 .mtable th.mt-c{text-align:center;width:52px}
 .mtable th.mt-r{text-align:right}
 .mtable th.mt-tags{text-align:left}
@@ -148,31 +150,31 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .mtable tbody tr:hover{background:rgba(127,127,127,.1)}
 .mt-name{min-width:200px}
 .mt-name b{display:block;font-weight:600;letter-spacing:.2px}
-.mt-name .mid{display:block;font-size:10.5px;color:var(--muted);font-family:var(--mono);opacity:.8}
+.mt-name .mid{display:block;font-size:11px;color:var(--muted);font-family:var(--mono);opacity:.85}
 .mt-c{text-align:center;width:52px;white-space:nowrap}
 .mt-r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .mt-tags{white-space:nowrap}
 .mok{color:var(--accent);font-weight:700}
-.mno{color:var(--muted);opacity:.55}
-.mtag{font-size:10.5px;padding:1px 8px;border-radius:999px;border:1px solid;line-height:1.6;white-space:nowrap}
-.mmul{font-size:11.5px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
+.mno{color:var(--muted);opacity:.65}
+.mtag{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid;line-height:1.6;white-space:nowrap}
+.mmul{font-size:12px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
 .keyline{display:flex;gap:8px;align-items:center}
 .keyline input{font-family:var(--mono)}
 .fmt-row{display:flex;gap:8px;align-items:center;margin-top:8px}
 .fmt-row select{flex:none;max-width:250px;font-size:12px}
 .fmt-row input{flex:1;font-family:var(--mono);font-size:12px}
-.utable{width:100%;border-collapse:collapse;font-size:12px}
+.utable{width:100%;border-collapse:collapse;font-size:12.5px}
 .utable th{color:var(--muted);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
-.utable td{padding:6px 8px;border-bottom:1px dashed var(--border);white-space:nowrap;vertical-align:top}
+.utable td{padding:7px 8px;border-bottom:1px dashed var(--border);white-space:nowrap;vertical-align:top;line-height:1.5}
 .utable tr:last-child td{border-bottom:none}
 /* 日志 */
 #page-logs{max-width:none}
 #logsBox{background:#0c0e12;border:1px solid var(--border);border-radius:var(--radius);
-  padding:12px;height:calc(100vh - 235px);min-height:360px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.7}
+  padding:12px;height:calc(100vh - 235px);min-height:360px;overflow-y:auto;font-family:var(--mono);font-size:12.5px;line-height:1.7}
 #logsBox .l{display:flex;gap:10px;align-items:flex-start}
-#logsBox .t{color:#5b6474;flex:0 0 148px;white-space:nowrap}
+#logsBox .t{color:#6e7889;flex:0 0 148px;white-space:nowrap}
 #logsBox .tag{color:var(--accent2);flex:0 0 88px;white-space:nowrap}
-#logsBox .lv-warn{color:var(--amber)} #logsBox .lv-error{color:var(--red)} #logsBox .lv-info{color:#9aa5b8}
+#logsBox .lv-warn{color:var(--amber)} #logsBox .lv-error{color:var(--red)} #logsBox .lv-info{color:#a7b2c5}
 #logsBox .m{flex:1;min-width:0;white-space:pre-wrap;word-break:break-all;color:#c9d4e8}
 /* toast */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card2);
@@ -237,6 +239,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="nav-item" data-page="usage"><span class="ico">📈</span><span data-i18n="nav_usage"></span></div>
     <div class="nav-item" data-page="prices"><span class="ico">💰</span><span data-i18n="nav_prices"></span></div>
     <div class="nav-item" data-page="logs" data-page-node-id="v1r2oJWPgpFtF4jbEzfh20"><span class="ico" data-page-node-id="f5sSpT2zYgaahWq19FF0R9">📜</span><span data-i18n="nav_logs" data-page-node-id="ThYBnfeI77cAl5sZz8SHtz"></span></div>
+    <div class="nav-item" data-page="plugins"><span class="ico">🧩</span><span data-i18n="nav_plugins"></span></div>
     <div class="nav-item" data-page="settings" data-page-node-id="JawgsrOJPD6dYNMXEpmzQ1"><span class="ico" data-page-node-id="k70m3J95Dk4y87IKlkiNLt">⚙️</span><span data-i18n="nav_settings" data-page-node-id="SOeFStMBllOHv0sCyvwvjz"></span></div>
   </nav>
   <div class="side-foot" data-page-node-id="g7Q5pgBNHPxKFDVIJGpMKp">
@@ -420,7 +423,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="card">
       <div class="row" style="margin-bottom:10px">
         <input type="text" id="priceSearch" data-i18n-ph="price_search_ph" style="flex:1;min-width:220px" placeholder="">
-        <span id="priceMeta" style="opacity:.6;font-size:12px;white-space:nowrap"></span>
+        <span id="priceMeta" style="opacity:.75;font-size:12px;white-space:nowrap"></span>
       </div>
       <div style="overflow-y:auto;max-height:calc(100vh - 300px)">
         <style>
@@ -445,6 +448,19 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div id="logsBox" data-page-node-id="6zzX0GjPcGnVkKekN5WA57"></div>
   </section>
 
+  <!-- 插件 -->
+  <section class="page" id="page-plugins">
+    <div class="spread">
+      <div><h1 data-i18n="plug_title"></h1><div class="sub" data-i18n="plug_sub"></div></div>
+      <button class="primary" id="btnPluginAdd" data-i18n="plug_add"></button>
+    </div>
+    <div id="plugList"></div>
+    <div class="sec" id="plugCardsSec" style="display:none;margin-top:22px">
+      <div class="sec-head"><h2 data-i18n="plug_cards"></h2></div>
+      <div id="plugCards"></div>
+    </div>
+  </section>
+
   <!-- 设置 -->
   <section class="page" id="page-settings" data-page-node-id="bDAwxjLTb584MhkoYIob0P">
     <div class="spread" data-page-node-id="41otSFx0OpEAtHGulQ4VvR"><div data-page-node-id="ZY6mZmBxonfpCrxwTCQLAe"><h1 data-i18n="set_title" data-page-node-id="5diZC7XYeDqTpBTkFzw4Po"></h1><div class="sub" data-i18n="set_sub" data-page-node-id="H1aDO7f6FZuBiUq93y9hIo"></div></div></div>
@@ -462,6 +478,31 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div id="addBody" data-page-node-id="zf7yaG34d06k6HHviDYGh2"></div>
     <div class="foot" data-page-node-id="WPAar3Za19Es6j06x88xvo">
       <button id="addClose" data-i18n="cancel" data-page-node-id="8qvCkL9vSdWuIX1iXsvBFk"></button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加插件模态 -->
+<div class="modal-mask" id="plugModal">
+  <div class="modal">
+    <h3 data-i18n="plug_add"></h3>
+    <div class="tabs-mini" id="plugTabs">
+      <button data-src="market" class="on" data-i18n="plug_src_market"></button>
+      <button data-src="github" data-i18n="plug_src_github"></button>
+      <button data-src="local" data-i18n="plug_src_local"></button>
+    </div>
+    <div id="plugTabMarket"></div>
+    <div id="plugTabGithub" style="display:none">
+      <div class="field"><label data-i18n="plug_repo_label"></label><input type="text" id="plugRepoInput" data-i18n-ph="plug_repo_ph"></div>
+      <div class="field"><label data-i18n="plug_mirror_label"></label><select id="plugMirrorSel"></select></div>
+    </div>
+    <div id="plugTabLocal" style="display:none">
+      <div class="field"><label data-i18n="plug_path_label"></label><input type="text" id="plugPathInput" data-i18n-ph="plug_path_ph"></div>
+    </div>
+    <div class="hint" style="color:var(--amber)" data-i18n="plug_warn"></div>
+    <div class="foot">
+      <button id="plugCancel" data-i18n="cancel"></button>
+      <button class="primary" id="plugInstallBtn" data-i18n="plug_install"></button>
     </div>
   </div>
 </div>

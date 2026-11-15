@@ -20,6 +20,7 @@ import (
 	"tokenhub/internal/config"
 	"tokenhub/internal/localimport"
 	"tokenhub/internal/logx"
+	"tokenhub/internal/plugins"
 	"tokenhub/internal/pj"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/pricing"
@@ -50,6 +51,7 @@ type Panel struct {
 	ulog   *usagelog.Log
 	prices *pricing.Table
 	upd    *updater.Manager
+	plugins *plugins.Manager // 插件系统（可为 nil：初始化失败不阻塞面板）
 	pj     PJStatus       // 破甲状态源（gateway 在 main 里注入，可为 nil）
 	pjAuto PJAutoAccessor // 破甲 auto 记忆的读取/重置（可为 nil）
 
@@ -115,12 +117,30 @@ type traePending struct {
 }
 
 func NewPanel(cfg *config.Config, st *store.Store, pl *pool.Pool, sched *scheduler.Scheduler, sh *shares.Manager, tn *tunnel.Manager, ac *accel.Manager, ul *usagelog.Log, prices *pricing.Table) *Panel {
-	return &Panel{
+	p := &Panel{
 		cfg: cfg, store: st, pl: pl, sched: sched, shares: sh, tunnel: tn, accel: ac, ulog: ul, prices: prices,
 		wbStates:  map[string]string{},
 		zcodeSess: map[string]*zcode.LoginSession{},
 		trae:      map[string]*traePending{},
 	}
+	// 插件系统：启动即加载已装插件；数据面给插件读模型目录
+	p.plugins, _ = plugins.NewManager(cfg.DataDir)
+	if p.plugins != nil {
+		p.plugins.DataFn = func() any {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			out := map[string]any{}
+			for prov, infos := range p.pl.AllModels(ctx) {
+				list := make([]map[string]any, 0, len(infos))
+				for _, mi := range infos {
+					list = append(list, map[string]any{"id": mi.ID, "name": mi.Name})
+				}
+				out[prov] = list
+			}
+			return out
+		}
+	}
+	return p
 }
 
 func randHex32() string {
@@ -230,6 +250,18 @@ func (p *Panel) Register(mux *http.ServeMux) {
 	api("POST /api/panel/prices/refresh", p.handlePricesRefresh)
 	api("GET /api/panel/update", p.handleUpdateStatus)
 	api("POST /api/panel/update/check", p.handleUpdateCheck)
+
+	// 插件系统
+	api("GET /api/panel/plugins", p.handlePluginsList)
+	api("GET /api/panel/plugins/market", p.handlePluginsMarket)
+	api("POST /api/panel/plugins/install-local", p.handlePluginsInstallLocal)
+	api("POST /api/panel/plugins/install-github", p.handlePluginsInstallGitHub)
+	api("POST /api/panel/plugins/install-builtin", p.handlePluginsInstallBuiltin)
+	api("POST /api/panel/plugins/toggle", p.handlePluginsToggle)
+	api("POST /api/panel/plugins/uninstall", p.handlePluginsUninstall)
+	api("POST /api/panel/plugins/{id}/rpc", p.handlePluginsRPC)
+	// 插件卡片页静态资源（只服务 installed/<id>/ui/ 下白名单扩展名）
+	mux.HandleFunc("GET /plugins-assets/{id}/{path...}", p.servePluginAssets)
 }
 
 // ── 模型价格页 ──
@@ -591,6 +623,12 @@ func (p *Panel) handleOverview(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// 各客户端软件版本（总览卡片展示用；空串=未检测到）。
+	// WorkBuddy 优先显示本机桌面客户端真实版本，读不到回退 API 模拟版本常量。
+	wbVer := localimport.WorkBuddyLocalVersion()
+	if wbVer == "" {
+		wbVer = workbuddy.ClientVersion()
+	}
 	writeJSON(w, map[string]any{
 		"app":      config.AppName,
 		"version":  config.AppVersion,
@@ -600,9 +638,8 @@ func (p *Panel) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"accounts": accounts,
 		"summary":  sums,
 		"localIP":  localIP(),
-		// 各客户端软件版本（总览卡片展示用；空串=未检测到）
 		"clientVersions": map[string]string{
-			store.PWorkBuddy: workbuddy.ClientVersion(),
+			store.PWorkBuddy: wbVer,
 			store.PTrae:      localimport.TraeLocalVersion(),
 			store.PZCode:     zcode.AppVersion(),
 		},
@@ -617,6 +654,7 @@ func localIP() string {
 		return "127.0.0.1"
 	}
 	defer conn.Close()
+
 	return conn.LocalAddr().(*net.UDPAddr).IP.String()
 }
 

@@ -4,7 +4,23 @@
 /* ───────────────────────── i18n ───────────────────────── */
 const I18N = {
   zh: {
-    nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_prices: '模型价格', nav_logs: '运行日志', nav_settings: '设置',
+    nav_dashboard: '总览', nav_accounts: '账号', nav_api: 'API 接口', nav_usage: '用量', nav_prices: '模型价格', nav_logs: '运行日志', nav_plugins: '插件', nav_settings: '设置',
+    /* 插件页 */
+    plug_title: '插件', plug_sub: '安装、启用和配置插件（JS 沙箱运行，卡片嵌在下方）',
+    plug_add: '添加插件', plug_cards: '插件提供的卡片',
+    plug_src_market: '货架', plug_src_github: 'GitHub 仓库', plug_src_local: '本地目录',
+    plug_repo_label: '仓库（owner/repo 或完整 URL）', plug_repo_ph: '例：someone/tokenhub-plugin-xxx',
+    plug_mirror_label: '安装源', plug_mirror_direct: '直连',
+    plug_path_label: '本地目录路径（含 plugin.json）', plug_path_ph: '例：D:\\my-plugins\\hello-card',
+    plug_warn: '⚠️ 请确认插件来源可信。插件在本机以你的权限运行，来源不明的插件可能危及数据；安装记录可在数据目录 audit.jsonl 里查看。',
+    plug_install: '安装', plug_installing: '安装中…',
+    plug_none: '还没有安装插件，点右上角「添加插件」开始',
+    plug_uninstall: '卸载', plug_confirm_uninstall: '卸载这个插件？它的卡片、存储和审计记录会一并删除。',
+    plug_installed_ok: '已安装并启用',
+    plug_market_empty: '货架暂无可安装项',
+    plug_market_installed: '已安装', plug_market_install: '安装',
+    plug_shelf_builtin: '内置',
+    plug_failed: '失败：',
     /* 模型价格页 */
     price_title: '模型价格', price_sub: '各大模型每百万 tokens 价格（OpenRouter + LLMabacus 双源，每日自动更新；离线用内置国产价兜底）',
     price_search_ph: '搜索模型名 / 厂商…', price_updated: '更新于', price_refresh: '立即更新', price_refreshing: '正在更新…',
@@ -185,7 +201,8 @@ const I18N = {
     set_opt_dedup: 'Token 优化：重复内容折叠', set_opt_dedup_d: '同一次对话里完全相同的大段内容（重复读文件/重复命令输出）只保留最新一份，旧的出现折叠成一行标记；完整内容仍在上下文，不影响效果',
     set_opt_neardup: 'Token 优化：近重复折叠（深度）', set_opt_neardup_d: '同一工具前后调用结果 ≥90% 行相同时只留最新一份（如改一行后重读文件、换参数重读同一份大文件），旧的折叠成标记；比"重复内容折叠"多救回一倍以上 token，模型以最新结果为准',
     set_accel: '网络加速（本地加速器）', set_accel_d: 'PAC 选择性加速：仅 WorkBuddy 国际站、GitHub 等名单域名走本地加速代理（DNS 优选 + 多 IP 连接竞速，只中继不解密不装证书），国内网站与内网全部直连不受影响。已兼容其他加速器：开启前自动备份你的代理/PAC 设置（Watt Toolkit、Clash 等）并串联保留，关闭时一键还原',
-    set_pj: '破甲', set_pj_d: '把破甲策略注入发往上游的请求：对所有提供商（WorkBuddy / Trae / ZCode / Qwen / Ollama）都可使用。前置段类策略（armor_max / armor_crack / armor_re / armor_scope / operator_priority）写进 system，一次设置长期生效；模板类（3_liner / antigpt / betterdan / aim / evil_confident）套在最后一轮用户消息上；也可选「前置段+模板」组合。「自动」= 每个模型首次请求时按固定探测句逐策略试一遍，第一个能正常作答的记住（data/pj_auto.json），之后直接用。注入超出预算时自动降档（完整 → 精简 → 只留最强前置段）。不保证一定成功——效果因模型和上游而异。',
+    set_oc_proxies: 'OpenCode 出口代理池', set_oc_proxies_d: '每行一个代理（http/https/socks5）。免费额度按出口 IP 记账：配置多个出口后请求轮换使用分散配额，某出口撞 429/配额自动冷却（尊重 Retry-After，无则 30 分钟）并切换下一个。留空 = 系统代理/直连。保存后立即生效。',
+    set_pj: '破甲', set_pj_d: '默认开启，对所有提供商生效。前置段策略写进 system 长期生效，模板类套在最后一轮用户消息上；选「自动」时按模型探测并记住可用策略。注入超预算自动降档，非流式拒答自动换策略重试一次。效果因模型和上游而异。',
     set_pj_on: '启用破甲', set_pj_strategy: '破甲策略', set_pj_scope: '生效范围',
     set_pj_scope_all: '所有提供商（默认）', set_pj_scope_ollama: '仅本机 Ollama（旧行为）',
     set_pj_lean: '精简档（省 token）', set_pj_lean_d: '前置段注入精简版（成本约 1/3）；注入总字符超过预算时也会自动降到这一档。精简版覆盖同样的行为约束，细节略少。',
@@ -197,7 +214,7 @@ const I18N = {
     set_reqdump: '请求快照（诊断）', set_reqdump_d: '开启后把客户端发来的原始请求落盘到 data/reqdump（只留最近 8 份），日志会打印每次请求的工具数量与名称。用于诊断「模型说找不到工具」这类客户端侧问题，日常使用保持关闭',
     set_auto_update: '自动更新', set_auto_update_d: '每 6 小时检查 GitHub 最新 release，发现新版本自动下载替换并重启（构建版本号一致则跳过）',
     upd_check: '检查更新', upd_checking: '检查中…', upd_cur: '当前版本', upd_latest: '最新', upd_state_up_to_date: '已是最新', upd_state_updated: '已下载更新，即将重启', upd_state_failed: '失败', upd_state_pending_restart: '待重启生效', upd_none: '尚未检查',
-    set_pj_d: '默认开启，对所有提供商生效。前置段策略写进 system 长期生效：armor_max（终极组合）> armor_crack（软件保护研究：keygen/补丁/DRM/资源检索）> armor_re（逆向工程强化）> armor_scope（基础作用域）> operator_priority（精简优先）；模板类（3_liner / antigpt / betterdan / aim / evil_confident）套在最后一轮用户消息上；也可选「前置段+模板」组合。选「自动」时按模型逐个探测并记忆结果（data/pj_auto.json），探测顺序按强度从强到弱。非流式请求遇拒答自动换最强策略重试一次（failover）。精简档与注入预算可控制 token 成本。效果因模型和上游而异。',
+    set_pj_d: '默认开启，对所有提供商生效。前置段策略写进 system 长期生效，模板类套在最后一轮用户消息上；选「自动」时按模型探测并记住可用策略。注入超预算自动降档，非流式拒答自动换策略重试一次。效果因模型和上游而异。',
     set_pj_off: '关闭',
     set_pj_auto: '自动（按模型探测模板）',
     us_saved: 'Token 优化已节省', us_saved_tip: '{n}的网关层优化（JSON 紧凑化+重复折叠）累计节省的输入估算',
@@ -216,7 +233,23 @@ const I18N = {
     logs_empty: '暂无日志',
   },
   en: {
-    nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_prices: 'Prices', nav_logs: 'Logs', nav_settings: 'Settings',
+    nav_dashboard: 'Dashboard', nav_accounts: 'Accounts', nav_api: 'API', nav_usage: 'Usage', nav_prices: 'Prices', nav_logs: 'Logs', nav_plugins: 'Plugins', nav_settings: 'Settings',
+    /* Plugins page */
+    plug_title: 'Plugins', plug_sub: 'Install, enable and configure plugins (run in a JS sandbox; cards embed below)',
+    plug_add: 'Add plugin', plug_cards: 'Cards provided by plugins',
+    plug_src_market: 'Shelf', plug_src_github: 'GitHub repo', plug_src_local: 'Local folder',
+    plug_repo_label: 'Repository (owner/repo or full URL)', plug_repo_ph: 'e.g. someone/tokenhub-plugin-xxx',
+    plug_mirror_label: 'Install source', plug_mirror_direct: 'Direct',
+    plug_path_label: 'Local folder path (containing plugin.json)', plug_path_ph: 'e.g. D:\\my-plugins\\hello-card',
+    plug_warn: '⚠️ Only install plugins you trust. Plugins run locally with your permissions; unknown sources may harm your data. Install records are kept in audit.jsonl.',
+    plug_install: 'Install', plug_installing: 'Installing…',
+    plug_none: 'No plugins installed yet — click "Add plugin" to start',
+    plug_uninstall: 'Uninstall', plug_confirm_uninstall: 'Uninstall this plugin? Its card, storage and audit records will be removed.',
+    plug_installed_ok: 'Installed and enabled',
+    plug_market_empty: 'The shelf is empty',
+    plug_market_installed: 'Installed', plug_market_install: 'Install',
+    plug_shelf_builtin: 'Builtin',
+    plug_failed: 'Failed: ',
     /* Prices page */
     price_title: 'Model Prices', price_sub: 'Per-million-token prices from OpenRouter + LLMabacus (auto-updated daily; builtin CN snapshot as offline fallback)',
     price_search_ph: 'Search model / vendor…', price_updated: 'Updated', price_refresh: 'Refresh now', price_refreshing: 'Refreshing…',
@@ -401,8 +434,10 @@ const I18N = {
     set_opt_dedup: 'Token saver: fold duplicates', set_opt_dedup_d: 'Byte-identical large content repeated in one conversation (re-read files, repeated command output) keeps only the latest copy; earlier ones become a one-line marker. Full content stays in context',
     set_opt_neardup: 'Token saver: near-duplicate folding (deep)', set_opt_neardup_d: 'When consecutive results of the same tool share ≥90% identical lines (e.g. re-reading a file after a one-line edit), older copies are folded into a marker; recovers far more tokens than exact-duplicate folding. The model uses the newest result',
     set_accel: 'Network accelerator (local)', set_accel_d: 'Selective PAC acceleration: only listed domains (WorkBuddy international, GitHub, etc.) go through the local accelerator proxy (DNS optimization + racing TCP connections, relay only, no decryption/certificates); domestic sites and intranet stay direct and untouched. Compatible with other accelerators: your existing proxy/PAC settings (Watt Toolkit, Clash, etc.) are backed up and chained, restored on turn-off',
+    set_oc_proxies: 'OpenCode egress proxy pool', set_oc_proxies_d: 'One proxy per line (http/https/socks5). Free-tier quota is tracked per egress IP: with several exits configured, requests rotate across them to spread quota; an exit hitting 429/quota cools down (Retry-After honored, else 30 minutes) and traffic moves to the next. Empty = system proxy / direct. Takes effect immediately after saving.',
+
     set_pj: 'Armor-piercing (prompt injection)',
-    set_pj_d: 'Injects the selected strategy into every upstream request, for ALL providers. Front strategies go into the system prompt and stay active: armor_max (max combo) > armor_crack (software-protection research: keygen/patch/DRM/ sourcing) > armor_re (reverse-engineering hardened) > armor_scope (base scope) > operator_priority (lean). Template strategies (3_liner / antigpt / betterdan / aim / evil_confident) wrap the last user message; combined "front+template" is also available. "Auto" probes each model once, trying strategies strongest-first, and remembers the winner (data/pj_auto.json). Non-stream replies judged as refusals are retried once with the strongest strategy (failover). Lean mode and the injection budget control token cost. Results vary by model and upstream.',
+    set_pj_d: 'On by default, applies to all providers. Front strategies are written into the system prompt (long-lived); template strategies wrap the last user message. "Auto" probes each model and remembers what works. Over-budget injections degrade automatically; refused non-stream replies retry once with a different strategy. Results vary by model and upstream.',
     set_pj_on: 'Enable armor-piercing', set_pj_strategy: 'Strategy', set_pj_scope: 'Scope',
     set_pj_scope_all: 'All providers (default)', set_pj_scope_ollama: 'Local Ollama only (legacy)',
     set_pj_lean: 'Lean mode (save tokens)', set_pj_lean_d: 'Fronts inject their lean variant (≈1/3 cost); over-budget injections also degrade to this tier automatically. Same behavioral constraints, fewer details.',
@@ -711,7 +746,7 @@ async function zcPlansModal(a) {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border, #333)">
       <div>
         <div>${esc(pl.name || pl.planId)}</div>
-        ${(pl.grants && pl.grants.length) ? `<div style="opacity:.6;font-size:12px">${esc(pl.grants.join('；'))}</div>` : ''}
+        ${(pl.grants && pl.grants.length) ? `<div style="opacity:.75;font-size:12px">${esc(pl.grants.join('；'))}</div>` : ''}
       </div>
       <button class="sm" data-plan="${esc(pl.planId)}">${t('zc_claim')}</button>
     </div>`).join('') : `<div style="opacity:.6">${t('zc_no_plans')}</div>`;
@@ -771,30 +806,35 @@ function copyText(txt) {
 }
 
 /* ───────────────────────── tabs ───────────────────────── */
-$$('.nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    $$('.nav-item').forEach(i => i.classList.remove('active'));
-    item.classList.add('active');
-    $$('.page').forEach(p => p.classList.remove('active'));
-    $('#page-' + item.dataset.page).classList.add('active');
-    if (item.dataset.page === 'logs') startLogStream();
-    if (item.dataset.page === 'api') {
-      // stale-while-revalidate：已有缓存先即时渲染，再后台拉新（变了才重渲染，
-      // 避免打断正在输入的搜索框）
-      renderModels(!!modelCache);
-      if (modelCache) {
-        api('/api/panel/models').then(r => {
-          if (JSON.stringify(r.models) !== JSON.stringify(modelCache)) {
-            modelCache = r.models;
-            renderModels(true);
-          }
-        }).catch(() => {});
-      }
+function showPage(name) {
+  const item = document.querySelector(`.nav-item[data-page="${name}"]`);
+  if (!item) return;
+  $$('.nav-item').forEach(i => i.classList.remove('active'));
+  item.classList.add('active');
+  $$('.page').forEach(p => p.classList.remove('active'));
+  $('#page-' + name).classList.add('active');
+  try { history.replaceState(null, '', '#' + name); } catch (_) {}
+  if (name === 'logs') startLogStream();
+  if (name === 'api') {
+    // stale-while-revalidate：已有缓存先即时渲染，再后台拉新（变了才重渲染，
+    // 避免打断正在输入的搜索框）
+    renderModels(!!modelCache);
+    if (modelCache) {
+      api('/api/panel/models').then(r => {
+        if (JSON.stringify(r.models) !== JSON.stringify(modelCache)) {
+          modelCache = r.models;
+          renderModels(true);
+        }
+      }).catch(() => {});
     }
-    if (item.dataset.page === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); startUsageAuto(); }
-    else stopUsageAuto();
-    if (item.dataset.page === 'prices') loadPrices();
-  });
+  }
+  if (name === 'usage') { loadUsage(); loadUsageLog(); loadUsageStats(); startUsageAuto(); }
+  else stopUsageAuto();
+  if (name === 'prices') loadPrices();
+  if (name === 'plugins') loadPlugins();
+}
+$$('.nav-item').forEach(item => {
+  item.addEventListener('click', () => showPage(item.dataset.page));
 });
 
 /* ───────────────────────── 用量页 ───────────────────────── */
@@ -816,15 +856,15 @@ async function loadUsage() {
   try { d = await api('/api/panel/usage-summary'); } catch (e) { toast(e.message, true); return; }
   const tks = d.tokens || {};
   $('#usageCards').innerHTML = `
-    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_today')}</div>
-      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.today)}</div>
-      <div style="opacity:.5;font-size:11px">${tks.todayReqs || 0} ${t('usage_req_unit').trim()}${tks.cacheHit ? ' · ' + t('usage_cache_hit') + ' ' + Math.round(tks.cacheHit * 100) + '%' : ''}</div></div>
-    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_week')}</div>
-      <div style="font-size:22px;font-weight:600">${fmtTokens(tks.week)}</div>
-      <div style="opacity:.5;font-size:11px">&nbsp;</div></div>
-    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.6;font-size:12px">${t('usage_requests')}</div>
-      <div style="font-size:22px;font-weight:600">${fmtNum(tks.allReqs ?? tks.requests ?? 0)}</div>
-      <div style="opacity:.5;font-size:11px">${t('usage_tracked')} ${tks.tracked || 0}</div></div>`;
+    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.8;font-size:12px">${t('usage_today')}</div>
+      <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums">${fmtTokens(tks.today)}</div>
+      <div style="opacity:.75;font-size:11.5px">${tks.todayReqs || 0} ${t('usage_req_unit').trim()}${tks.cacheHit ? ' · ' + t('usage_cache_hit') + ' ' + Math.round(tks.cacheHit * 100) + '%' : ''}</div></div>
+    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.8;font-size:12px">${t('usage_week')}</div>
+      <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums">${fmtTokens(tks.week)}</div>
+      <div style="opacity:.75;font-size:11.5px">&nbsp;</div></div>
+    <div class="card" style="flex:1;min-width:150px"><div style="opacity:.8;font-size:12px">${t('usage_requests')}</div>
+      <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums">${fmtNum(tks.allReqs ?? tks.requests ?? 0)}</div>
+      <div style="opacity:.75;font-size:11.5px">${t('usage_tracked')} ${tks.tracked || 0}</div></div>`;
   // 各账号额度与占比：折叠为一行总积分，点右侧小三角展开完整明细
   const accs = d.accounts || [];
   $('#usageQuotaList').innerHTML = accs.length ? accs.map((x, i) => {
@@ -838,7 +878,7 @@ async function loadUsage() {
           ${x.plan ? `<span class="badge acc">${esc(x.plan)}</span>` : ''}</div>
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-variant-numeric:tabular-nums">${totalLine}</span>
-          <span class="qtri" style="display:inline-block;font-size:10px;opacity:.55;transition:transform .15s;line-height:1">▼</span>
+          <span class="qtri" style="display:inline-block;font-size:10px;opacity:.7;transition:transform .15s;line-height:1">▼</span>
         </div>
       </div>
       <div id="${bodyId}" style="display:none;padding-top:8px">
@@ -904,8 +944,8 @@ function providerMeta(name) {
     zcode: { label: t('prov_zcode'), icon: '/icons/zcode.png', color: '#f2b544' },
     qwen: { label: t('prov_qwen'), icon: '/icons/qwen.png', color: '#5b6cff' },
     ollama: { label: t('prov_ollama'), icon: '/icons/ollama.png', color: '#9aa0a6' },
-    free: { label: t('prov_free'), icon: '/icons/free.svg', color: '#2dd4bf' },
-    opencode: { label: t('prov_opencode'), icon: '/icons/opencode.jpg', color: '#f59e0b' },
+    free: { label: t('prov_free'), icon: '/icons/free.png', color: '#2dd4bf' },
+    opencode: { label: t('prov_opencode'), icon: '/icons/opencode.png', color: '#f59e0b' },
     custom: { label: t('prov_custom'), icon: '/favicon.svg', color: '#b07cff' },
   };
   return map[name] || { label: name, icon: '/favicon.svg', color: '#8b93a5' };
@@ -1904,6 +1944,7 @@ function renderSettings() {
     settingRow(t('set_opt_dedup'), t('set_opt_dedup_d'), `<label class="switch"><input type="checkbox" id="sOptDedup" ${(c.optDedup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_opt_neardup'), t('set_opt_neardup_d'), `<label class="switch"><input type="checkbox" id="sOptNearDup" ${(c.optNearDup !== false) ? 'checked' : ''}><i></i></label>`),
     settingRow(t('set_accel'), t('set_accel_d'), `<label class="switch"><input type="checkbox" id="sAccel" ${c.accel ? 'checked' : ''}><i></i></label>`),
+    settingRow(t('set_oc_proxies'), t('set_oc_proxies_d'), `<textarea id="sOCProxies" rows="3" style="width:100%;font-family:var(--mono);font-size:12px">${esc((c.ocProxies || []).join('\n'))}</textarea>`, 'wide'),
     settingRow(t('set_auto_update'), t('set_auto_update_d'), `<label class="switch"><input type="checkbox" id="sAutoUpdate" ${c.autoUpdate ? 'checked' : ''}><i></i></label>`),
     settingRow(`${t('upd_cur')} <span class="badge" style="font-family:var(--mono)" id="updVer"></span>`, `<span id="updStat">${t('upd_none')}</span>`, `<button class="sm" id="btnUpdateCheck">${t('upd_check')}</button>`),
     settingRow(t('set_reqdump'), t('set_reqdump_d'), `<label class="switch"><input type="checkbox" id="sReqDump" ${c.reqDump ? 'checked' : ''}><i></i></label>`),
@@ -2040,6 +2081,7 @@ $('#btnSaveSettings').addEventListener('click', async () => {
     pjCompact: $('#sPJCompact').checked,
     reqDump: $('#sReqDump').checked,
     autoUpdate: $('#sAutoUpdate').checked,
+    ocProxies: $('#sOCProxies').value.split(/\n+/).map(s => s.trim()).filter(Boolean),
   };
   try {
     await post('/api/panel/config', body);
@@ -2440,31 +2482,49 @@ function fmtPrice(n) {
   return String(parseFloat(n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toFixed(4)));
 }
 
+// 小写模型 ID → 正常显示名：glm-5.3-flash → GLM-5.3-Flash，gpt-oss:20b → GPT-OSS:20B
+const MODEL_BRANDS = { glm:'GLM', gpt:'GPT', oss:'OSS', ai:'AI', llm:'LLM', deepseek:'DeepSeek', kimi:'Kimi',
+  qwen:'Qwen', minimax:'MiniMax', mistral:'Mistral', codestral:'Codestral', devstral:'Devstral',
+  gemma:'Gemma', llama:'Llama', ernie:'ERNIE', hunyuan:'Hunyuan', grok:'Grok', gemini:'Gemini', claude:'Claude', nemo:'Nemo' };
+function prettyModelId(id) {
+  return String(id).split(/(-|:|_|\/)/).map(tok => {
+    if (/^(-|:|_|\/)$/.test(tok)) return tok;
+    const lo = tok.toLowerCase();
+    if (MODEL_BRANDS[lo]) return MODEL_BRANDS[lo];
+    const ver = lo.match(/^(\d+(?:\.\d+)*)([a-z])$/); // 20b → 20B
+    if (ver) return ver[1] + ver[2].toUpperCase();
+    return lo.charAt(0).toUpperCase() + lo.slice(1);
+  }).join('');
+}
+
 function renderPricesTable() {
   const tb = $('#priceList');
   if (!tb || !priceCache) return;
   const head = $('#priceHead');
   if (head) head.innerHTML = `<tr style="text-align:right">
     <th style="text-align:left;width:38%">${t('price_col_model')}</th><th style="text-align:left;width:13%">${t('price_col_vendor')}</th>
-    <th style="width:14%">${t('price_col_input')}<span style="opacity:.6">${t('price_per_m_s')}</span></th>
-    <th style="width:13%">${t('price_col_output')}<span style="opacity:.6">${t('price_per_m_s')}</span></th>
+    <th style="width:14%">${t('price_col_input')}<span style="opacity:.7">${t('price_per_m_s')}</span></th>
+    <th style="width:13%">${t('price_col_output')}<span style="opacity:.7">${t('price_per_m_s')}</span></th>
     <th style="width:11%">${t('price_col_cache')}</th>
     <th style="width:11%">${t('price_col_src')}</th></tr>`;
   const q = ($('#priceSearch')?.value || '').trim().toLowerCase();
   const all = priceCache.models || [];
   const list = q ? all.filter(m =>
-    (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q) || (m.vendor || '').toLowerCase().includes(q)
+    (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q) || prettyModelId(m.id).toLowerCase().includes(q) || (m.vendor || '').toLowerCase().includes(q)
   ) : all;
   const curSym = c => c === 'USD' ? '<span style="opacity:.55">$</span>' : c === 'CNY' ? '<span style="opacity:.55">¥</span>' : '';
-  tb.innerHTML = list.length ? list.map(m => `<tr>
-      <td><div style="font-family:var(--mono);font-weight:600">${esc(m.id)}</div>
-        ${m.name && m.name !== m.id ? `<div style="opacity:.55;font-size:11px;margin-top:1px">${esc(m.name)}</div>` : ''}</td>
-      <td>${m.vendor ? `<span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle">${esc(m.vendor)}</span>` : '<span style="opacity:.4">—</span>'}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.input)} ${curSym(m.currency)}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.output)} ${curSym(m.currency)}</td>
-      <td style="text-align:right;font-family:var(--mono)">${fmtPrice(m.cacheRead)} ${curSym(m.currency)}</td>
+  tb.innerHTML = list.length ? list.map(m => {
+    const disp = (m.name && m.name !== m.id) ? m.name : prettyModelId(m.id);
+    return `<tr>
+      <td><div style="font-weight:600">${esc(disp)}</div>
+        <div style="opacity:.7;font-size:11.5px;margin-top:1px;font-family:var(--mono)">${esc(m.id)}</div></td>
+      <td>${m.vendor ? `<span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle">${esc(m.vendor)}</span>` : '<span style="opacity:.5">—</span>'}</td>
+      <td style="text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums">${fmtPrice(m.input)} ${curSym(m.currency)}</td>
+      <td style="text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums">${fmtPrice(m.output)} ${curSym(m.currency)}</td>
+      <td style="text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums">${fmtPrice(m.cacheRead)} ${curSym(m.currency)}</td>
       <td style="text-align:center"><span class="badge">${esc(priceSrcLabel(m.source))}</span></td>
-    </tr>`).join('') : `<tr><td colspan="6" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" style="color:var(--muted)">${t('usage_empty')}</td></tr>`;
 }
 
 $('#priceSearch')?.addEventListener('input', (() => {
@@ -2609,3 +2669,199 @@ async function boot() {
 }
 boot();
 setInterval(loadOverview, 30000);
+// hash 路由：刷新后回到原页面（#plugins / #logs …）
+{
+  const initial = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+  if (initial && initial !== 'dashboard') showPage(initial);
+}
+
+/* ───────────────────────── 插件页 ───────────────────────── */
+let plugCache = [];
+let plugShelfCache = null;
+let plugTab = 'market';
+
+async function loadPlugins() {
+  try {
+    const r = await api('/api/panel/plugins');
+    plugCache = r.plugins || [];
+    renderPlugins();
+    renderPlugCards();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderPlugins() {
+  const box = $('#plugList');
+  if (!plugCache.length) { box.innerHTML = `<div class="empty">${t('plug_none')}</div>`; return; }
+  box.innerHTML = plugCache.map(p => `
+    <div class="acct">
+      <div class="avatar">🧩</div>
+      <div class="info">
+        <div class="name">${esc(p.name)} <span class="pver">v${esc(p.version)}</span>
+          <span class="badge ${p.enabled ? 'ok' : ''}">${p.enabled ? t('st_on') : t('st_off')}</span>
+          <span class="badge">${esc(p.source)}</span></div>
+        <div class="meta"><span>${esc(p.description || '')}</span></div>
+        ${p.author ? `<div class="meta"><span>${esc(p.author)}</span></div>` : ''}
+      </div>
+      <div class="acts">
+        <label class="switch" title="${p.enabled ? t('act_disable') : t('act_enable')}">
+          <input type="checkbox" data-plug-toggle="${esc(p.id)}" ${p.enabled ? 'checked' : ''}><i></i>
+        </label>
+        <button class="sm danger" data-plug-del="${esc(p.id)}">${t('plug_uninstall')}</button>
+      </div>
+    </div>`).join('');
+}
+
+// 插件卡片页 RPC 桥：沙箱 iframe 无同源权限，卡片页 postMessage 过来，这里代调 RPC 再回传。
+window.addEventListener('message', async ev => {
+  const d = ev.data || {};
+  if (!d.plugRpc || !d.plugRpc.method || !ev.source) { console.log('[plug-bridge] skip:', JSON.stringify(d).slice(0, 80), 'src:', !!ev.source); return; }
+  const { reqId, method, params } = d.plugRpc;
+  const reply = (payload) => { try { ev.source.postMessage({ plugRpcReply: { reqId, ...payload } }, '*'); console.log('[plug-bridge] replied', method, JSON.stringify(payload).slice(0, 80)); } catch (e) { console.log('[plug-bridge] reply throw', e.message); } };
+  try {
+    // 调用方插件 id 从消息来源 iframe 的 src 推断（/plugins-assets/<id>/…）
+    let pid = '';
+    const frames = document.querySelectorAll('iframe');
+    for (const f of frames) {
+      if (f.contentWindow === ev.source) {
+        const m = (f.getAttribute('src') || '').match(/plugins-assets\/([^/]+)\//);
+        if (m) pid = decodeURIComponent(m[1]);
+        break;
+      }
+    }
+    console.log('[plug-bridge] msg', method, 'pid=', pid);
+    if (!pid) return reply({ ok: false, error: '无法识别来源插件' });
+    const res = await fetch(`/api/panel/plugins/${encodeURIComponent(pid)}/rpc`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method, params })
+    });
+    const j = await res.json();
+    if (j.ok) reply({ ok: true, result: j.result });
+    else reply({ ok: false, error: j.error || ('HTTP ' + res.status) });
+  } catch (e) {
+    reply({ ok: false, error: String(e && e.message || e) });
+  }
+});
+
+function renderPlugCards() {
+  const cards = plugCache.filter(p => p.enabled && p.hasPage);
+  const sec = $('#plugCardsSec'), box = $('#plugCards');
+  sec.style.display = cards.length ? '' : 'none';
+  box.innerHTML = cards.map(p => `
+    <div class="card" style="margin-bottom:14px">
+      <div class="sec-head"><h2>${esc(p.pageTitle || p.name)}</h2><span class="badge">${esc(p.id)}</span></div>
+      <iframe src="${esc(p.pageURL)}" sandbox="allow-scripts"
+        style="width:100%;height:280px;border:none;background:var(--card2);border-radius:9px"></iframe>
+    </div>`).join('');
+}
+
+$('#plugList').addEventListener('change', async e => {
+  const id = e.target.dataset && e.target.dataset.plugToggle;
+  if (!id) return;
+  try {
+    await post('/api/panel/plugins/toggle', { id, enabled: e.target.checked });
+    toast(t('saved_ok'));
+    loadPlugins();
+  } catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+});
+
+$('#plugList').addEventListener('click', async e => {
+  const id = e.target.dataset && e.target.dataset.plugDel;
+  if (!id) return;
+  if (!confirm(t('plug_confirm_uninstall'))) return;
+  try {
+    await post('/api/panel/plugins/uninstall', { id });
+    toast(t('saved_ok'));
+    loadPlugins();
+  } catch (err) { toast(err.message, true); }
+});
+
+/* ── 添加插件模态 ── */
+function openPlugModal() {
+  $('#plugModal').classList.add('show');
+  switchPlugTab('market');
+  loadShelf();
+}
+function closePlugModal() { $('#plugModal').classList.remove('show'); }
+
+function switchPlugTab(src) {
+  plugTab = src;
+  $$('#plugTabs button').forEach(b => b.classList.toggle('on', b.dataset.src === src));
+  $('#plugTabMarket').style.display = src === 'market' ? '' : 'none';
+  $('#plugTabGithub').style.display = src === 'github' ? '' : 'none';
+  $('#plugTabLocal').style.display = src === 'local' ? '' : 'none';
+}
+
+$('#plugTabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (b) switchPlugTab(b.dataset.src);
+});
+$('#btnPluginAdd').addEventListener('click', openPlugModal);
+$('#plugCancel').addEventListener('click', closePlugModal);
+$('#plugModal').addEventListener('click', e => { if (e.target === $('#plugModal')) closePlugModal(); });
+
+async function loadShelf() {
+  const box = $('#plugTabMarket');
+  try {
+    const r = await api('/api/panel/plugins/market');
+    plugShelfCache = r.items || [];
+    const mirrors = r.mirrors || [];
+    // GitHub 源下拉：直连 + 镜像
+    const sel = $('#plugMirrorSel');
+    sel.innerHTML = `<option value="">${t('plug_mirror_direct')}</option>` +
+      mirrors.filter(m => m).map(m => `<option value="${esc(m)}">${esc(m.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</option>`).join('');
+    if (!plugShelfCache.length) {
+      box.innerHTML = `<div class="empty">${t('plug_market_empty')}</div>`;
+      return;
+    }
+    const installedIds = new Set(plugCache.map(p => p.id));
+    box.innerHTML = plugShelfCache.map(p => `
+      <div class="acct">
+        <div class="avatar">${p.builtin ? '📦' : '🛒'}</div>
+        <div class="info">
+          <div class="name">${esc(p.name)} <span class="pver">v${esc(p.version)}</span>
+            ${p.builtin ? `<span class="badge acc">${t('plug_shelf_builtin')}</span>` : ''}</div>
+          <div class="meta"><span>${esc(p.description || '')}</span></div>
+        </div>
+        <div class="acts">
+          ${installedIds.has(p.id)
+            ? `<span class="badge ok">${t('plug_market_installed')}</span>`
+            : `<button class="sm primary" data-plug-install-builtin="${esc(p.id)}">${t('plug_market_install')}</button>`}
+        </div>
+      </div>`).join('');
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+$('#plugTabMarket').addEventListener('click', async e => {
+  const id = e.target.dataset && e.target.dataset.plugInstallBuiltin;
+  if (!id) return;
+  e.target.disabled = true;
+  try {
+    await post('/api/panel/plugins/install-builtin', { id });
+    toast(t('plug_installed_ok'));
+    closePlugModal();
+    loadPlugins();
+  } catch (err) { toast(t('plug_failed') + err.message, true); e.target.disabled = false; }
+});
+
+$('#plugInstallBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = t('plug_installing');
+  try {
+    if (plugTab === 'github') {
+      const repo = $('#plugRepoInput').value.trim();
+      if (!repo) throw new Error(t('plug_repo_label'));
+      await post('/api/panel/plugins/install-github', { repo, mirror: $('#plugMirrorSel').value });
+    } else if (plugTab === 'local') {
+      const path = $('#plugPathInput').value.trim();
+      if (!path) throw new Error(t('plug_path_label'));
+      await post('/api/panel/plugins/install-local', { path });
+    } else {
+      throw new Error('shelf: 选择货架条目安装');
+    }
+    toast(t('plug_installed_ok'));
+    closePlugModal();
+    loadPlugins();
+  } catch (err) { toast(t('plug_failed') + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = t('plug_install');
+});

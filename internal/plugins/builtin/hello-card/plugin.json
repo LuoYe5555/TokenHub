@@ -1,0 +1,15 @@
+{
+  "id": "hello-card",
+  "name": "示例卡片",
+  "version": "1.0.0",
+  "description": "演示插件：面板卡片 + onRpc 后端 + 键值存储。装它只为看看插件长什么样。",
+  "author": "TokenHub",
+  "main": "main.js",
+  "permissions": {
+    "storage": true
+  },
+  "ui": {
+    "entry": "ui/index.html",
+    "title": "示例卡片"
+  }
+}

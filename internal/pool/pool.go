@@ -64,7 +64,7 @@ func (p *Pool) Providers() map[string]provider.Provider {
 }
 
 // shortAlias 模型前缀别名。
-var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom, "oc": store.POpencode}
+var shortAlias = map[string]string{"wb": store.PWorkBuddy, "codebuddy": store.PWorkBuddy, "tr": store.PTrae, "zc": store.PZCode, "glm": store.PZCode, "qw": store.PQwen, "qwen-web": store.PQwen, "ol": store.POllama, "ext": store.PCustom, "oc": store.POpencode, "kilo": store.PFree, "opencode": store.POpencode}
 
 // customBySlug 按 slug 前缀找外部 API 账号（大小写不敏感；保留名不作为 slug）。
 func (p *Pool) customBySlug(slug string) *store.Account {
@@ -167,11 +167,27 @@ func (p *Pool) ResolveModel(model string) (provider.Provider, string) {
 	}
 	// Kilo 免费池的模型 id 自带 ":"（如 nvidia/xxx:free、kilo-auto/free），
 	// 上面的逐段前缀认领接不住裸 id —— 在回落默认提供商之前按免费池清单认领，
-	// 避免这类模型被误路由到默认提供商。
+	// 避免这类模型被误路由到默认提供商；未认领的别名前缀（如 "Kilo:xxx"）
+	// 也在这里逐段剥掉再认领。
 	for _, name := range []string{store.PFree, store.POpencode} {
-		if pv := p.Provider(name); pv != nil {
-			if hm, ok := pv.(interface{ HasModel(string) bool }); ok && hm.HasModel(model) {
-				return pv, p.canonicalModel(name, model)
+		pv := p.Provider(name)
+		if pv == nil {
+			continue
+		}
+		hm, ok := pv.(interface{ HasModel(string) bool })
+		if !ok {
+			continue
+		}
+		if hm.HasModel(model) {
+			return pv, p.canonicalModel(name, model)
+		}
+		if strings.Contains(model, ":") {
+			segs := strings.Split(model, ":")
+			for i := 1; i < len(segs)-1; i++ {
+				rest := strings.Join(segs[i:], ":")
+				if hm.HasModel(rest) {
+					return pv, p.canonicalModel(name, rest)
+				}
 			}
 		}
 	}

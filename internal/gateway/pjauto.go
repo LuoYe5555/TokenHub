@@ -124,23 +124,55 @@ func (g *Gateway) pjAutoPick(key string) (string, bool) {
 // key 为客户端原始模型名；body 为原始请求 JSON（保留原 stream 设置）。
 // 注入形状跟随设置页档位（PJLean 精简档 + PJBudget 预算），探测与记忆共用。
 func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
+	return g.pjAutoApplyOpts(key, body, false)
+}
+
+func (g *Gateway) pjAutoApplyOpts(key string, body []byte, frontOnly bool) []byte {
 	if key == "" {
 		return body
 	}
 	body = g.foldPJDups(body)
+	if frontOnly {
+		if out, changed := pj.StripTemplate(body); changed {
+			logx.Infof("gateway", "破甲 auto：请求带 tools，已摘除历史里的模板段")
+			body = out
+		}
+	}
 	mem := g.pjMemory()
 	switch pick := mem.get(key); {
 	case pick == pjAutoNone:
 		return body // 已知全部策略无效，透传
 	case pick != "":
 		if containsStrategy(pick) {
-			plan := pj.PlanForBudget(pick, g.cfg.PJBudget)
+			plan := pj.PlanForBudget(pick, g.pjEffectiveBudget())
+			if frontOnly {
+				plan.Tpl = "" // 工具请求：砍模板防污染
+			}
 			logx.Infof("gateway", "破甲 auto：模型 %s 使用已记忆策略 %s（%s）", key, pick, pjShapeLabel(plan))
 			return pj.ApplyPlan(plan, body)
 		}
 	}
 
-	// 未探测过：用固定探测句逐策略试（关流、单轮、最小请求）
+	// 未探测过：并发探测太多请求同时撞同一模型会瞬间烧掉上游配额，
+	// singleflight：只有第一个请求去探测，其余等结果出来共用同一个记忆。
+	g.pjProbeMu.Lock()
+	if g.pjProbeRunning == nil {
+		g.pjProbeRunning = map[string]bool{}
+	}
+	if g.pjProbeRunning[key] {
+		g.pjProbeMu.Unlock()
+		logx.Infof("gateway", "破甲 auto：模型 %s 正在探测中，本次先透传", key)
+		return body
+	}
+	g.pjProbeRunning[key] = true
+	g.pjProbeMu.Unlock()
+	defer func() {
+		g.pjProbeMu.Lock()
+		delete(g.pjProbeRunning, key)
+		g.pjProbeMu.Unlock()
+	}()
+
+	// 用固定探测句逐策略试（关流、单轮、最小请求）
 	probe := buildPJProbe(key)
 	if probe == nil {
 		return body
@@ -148,7 +180,7 @@ func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	for _, strat := range pj.Strategies() {
-		plan := pj.PlanForBudget(strat, g.cfg.PJBudget)
+		plan := pj.PlanForBudget(strat, g.pjEffectiveBudget())
 		payload := pj.ApplyPlan(plan, probe)
 		if payload == nil || bytes.Equal(payload, probe) {
 			continue // 该策略在当前预算下装不下：跳过
@@ -168,6 +200,9 @@ func (g *Gateway) pjAutoApply(key string, body []byte) []byte {
 		if verdict == pj.VerdictAnswer {
 			mem.set(key, strat)
 			logx.Infof("gateway", "破甲 auto：模型 %s 自动选定策略 %s（已记忆，可在设置页重新探测）", key, strat)
+			if frontOnly {
+				plan.Tpl = ""
+			}
 			return pj.ApplyPlan(plan, body)
 		}
 	}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  body{margin:0;padding:14px;font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei',system-ui,-apple-system,sans-serif;
+       font-size:13px;color:var(--text,#e7eaf0);background:transparent;
+       -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .tip{color:var(--muted,#98a1b3);line-height:1.6;margin-bottom:10px}
+  button{background:var(--card2,#1f2430);color:var(--text);border:1px solid var(--border,#272d3a);
+         border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer;margin-right:6px}
+  button:hover{border-color:var(--accent,#4f8cff)}
+  .out{font-family:var(--mono,'Cascadia Mono',Consolas,monospace);font-size:12.5px;color:var(--accent2,#6ea1ff);
+       margin-top:10px;white-space:pre-wrap;word-break:break-all;min-height:18px}
+</style>
+</head>
+<body>
+  <div class="tip">这个卡片由插件提供（iframe 沙箱渲染）。卡片页通过 postMessage 桥调插件 main.js 的 onRpc，跑在 goja 沙箱里。</div>
+  <button id="b1">打个招呼</button>
+  <button id="b2">访问计数（存储）</button>
+  <button id="b3">模型目录统计</button>
+  <div class="out" id="out">—</div>
+<script>
+const out = document.getElementById('out');
+// 标准插件 RPC 桥：卡片页在 iframe 沙箱里没有同源权限，
+// 通过 parent.postMessage 请求面板代为调用 /api/panel/plugins/<id>/rpc。
+let seq = 0;
+function rpc(method, params) {
+  return new Promise((resolve, reject) => {
+    const reqId = 'r' + (++seq);
+    const onMsg = (ev) => {
+      const d = ev.data || {};
+      if (d.plugRpcReply && d.plugRpcReply.reqId === reqId) {
+        window.removeEventListener('message', onMsg);
+        if (d.plugRpcReply.ok) resolve(d.plugRpcReply.result); else reject(new Error(d.plugRpcReply.error || 'rpc 失败'));
+      }
+    };
+    window.addEventListener('message', onMsg);
+    parent.postMessage({ plugRpc: { reqId, method, params: params || null } }, '*');
+    setTimeout(() => { window.removeEventListener('message', onMsg); reject(new Error('rpc 超时')); }, 8000);
+  });
+}
+document.getElementById('b1').onclick = async () => {
+  try { const r = await rpc('greet', { name: 'TokenHub' }); out.textContent = r.msg; }
+  catch (e) { out.textContent = '错误: ' + e.message; }
+};
+document.getElementById('b2').onclick = async () => {
+  try { const r = await rpc('visit'); out.textContent = '你是第 ' + r.visits + ' 次访问（插件键值存储持久化）'; }
+  catch (e) { out.textContent = '错误: ' + e.message; }
+};
+document.getElementById('b3').onclick = async () => {
+  try { const r = await rpc('stats'); out.textContent = '提供商 ' + r.providers + ' 个，模型共 ' + r.models + ' 个（th.data.models()）'; }
+  catch (e) { out.textContent = '错误: ' + e.message; }
+};
+</script>
+</body>
+</html>

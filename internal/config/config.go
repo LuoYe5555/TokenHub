@@ -93,6 +93,14 @@ type Config struct {
 	DefaultProvider string            `json:"defaultProvider"`
 	ModelRoutes     map[string]string `json:"modelRoutes"`
 
+	// OpenCode 免费档出口代理池：每项一个 http/https/socks5 代理 URL。
+	// 免费额度按出口 IP 记账，多出口轮询可分散配额；某出口撞 429/配额
+	// 自动冷却（尊重 Retry-After，无则 30 分钟）并切换下一个。空 = 系统代理/直连。
+	OCProxies []string `json:"ocProxies,omitempty"`
+
+	// 客户端模型同步：勾选注入到 WorkBuddy / ZCode / Trae 自定义模型的
+	// "provider:model" 列表（面板「模型同步」卡片维护）。
+
 	Providers map[string]*ProviderConfig `json:"providers"`
 
 	// 自动领取

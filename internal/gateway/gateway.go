@@ -15,6 +15,7 @@ import (
 	"tokenhub/internal/config"
 	"tokenhub/internal/logx"
 	"tokenhub/internal/pj"
+	"tokenhub/internal/pseudotools"
 	"tokenhub/internal/pool"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/shares"
@@ -35,6 +36,10 @@ type Gateway struct {
 		once  sync.Once
 		picks *pjAutoMem
 	}
+
+	// auto 探测 singleflight：同一模型同一时刻只允许一个探测在跑
+	pjProbeMu      sync.Mutex
+	pjProbeRunning map[string]bool
 
 	// AfterCall 每次 API 调用完成后异步回调（参数：提供商名、成功与否），
 	// 用于触发额度快照自动刷新（可为 nil）。
@@ -300,7 +305,9 @@ func pjNextStrategy(cur string) string {
 	return all[0] // 未知/为空（auto 未展开）→ 直接上最强
 }
 
-// shouldPJRetry 非流式回复是否需要破甲重试：破甲开着、回复被判拒答。
+// shouldPJRetry 非流式回复是否需要破甲重试：破甲开着、回复被判拒答或空。
+// 空回复（上游吐了 200 但没有正文，模型把整段内容吞掉时常见）同样重试——
+// 重试换更强的策略，大概率能拿到实质内容；最差也就是再空一次。
 func (g *Gateway) shouldPJRetry(provName string, text string) bool {
 	if g.cfg == nil || !g.cfg.PJOn() {
 		return false
@@ -309,7 +316,7 @@ func (g *Gateway) shouldPJRetry(provName string, text string) bool {
 		return false
 	}
 	if strings.TrimSpace(text) == "" {
-		return false
+		return true
 	}
 	return pj.LooksRefused(text)
 }
@@ -330,6 +337,14 @@ func (g *Gateway) applyPJ(provName string, model string, body []byte) []byte {
 //  3. 按注入预算选形状（完整 → 精简 → 只留最强前置段 → 放弃）；
 //  4. 落注入（ApplyPlan），日志带策略、档位与估算 token 成本。
 func (g *Gateway) applyPJModel(provName string, model string, rawModel string, body []byte) []byte {
+	return g.applyPJModelOpts(provName, model, rawModel, body, false)
+}
+
+// applyPJModelOpts 注入管线核心。frontOnly=true 时（带 tools 的 agent 请求）：
+//  1. 先把客户端回传历史里已套壳的模板段摘干净（StripTemplate——模板在工具流里
+//     会污染 tool_calls 生成，也常触发「我不能按 BetterDAN 那种格式回答」的元评论拒答）；
+//  2. 只挂前置段（模板砍掉），保住作用域约束又不碰最后一轮正文。
+func (g *Gateway) applyPJModelOpts(provName string, model string, rawModel string, body []byte, frontOnly bool) []byte {
 	if g.cfg == nil || !g.cfg.PJOn() {
 		return body
 	}
@@ -343,10 +358,24 @@ func (g *Gateway) applyPJModel(provName string, model string, rawModel string, b
 		if key == "" {
 			key = model
 		}
-		return g.pjAutoApply(key, body)
+		return g.pjAutoApplyOpts(key, body, frontOnly)
 	}
 	// 折叠历史里重复的破甲段（客户端把带段上下文整包回传的场景）
 	body = g.foldPJDups(body)
+	if frontOnly {
+		if out, changed := pj.StripTemplate(body); changed {
+			logx.Infof("gateway", "破甲：请求带 tools，已摘除历史里的模板段（策略改用前置段 %s）", strategy)
+			body = out
+		}
+		plan := pj.PlanForBudget(strategy, g.pjEffectiveBudget())
+		plan.Tpl = "" // 前置段 only
+		out := pj.ApplyPlan(plan, body)
+		if !bytes.Equal(out, body) {
+			logx.Infof("gateway", "破甲已注入（%s / %s，策略 %s，%s·tools）≈+%d tokens",
+				provName, model, strategy, pjShapeLabel(plan), pjInjectionCost(strategy, plan))
+		}
+		return out
+	}
 	plan := pj.PlanForBudget(strategy, g.pjEffectiveBudget())
 	out := pj.ApplyPlan(plan, body)
 	if !bytes.Equal(out, body) {
@@ -357,6 +386,29 @@ func (g *Gateway) applyPJModel(provName string, model string, rawModel string, b
 			provName, model, strategy, g.cfg.PJBudget)
 	}
 	return out
+}
+
+// requestHasTools 判断 OpenAI 形状的请求是否携带工具定义。
+func requestHasTools(body []byte) bool {
+	var peek struct {
+		Tools []any `json:"tools"`
+	}
+	if json.Unmarshal(body, &peek) != nil {
+		return false
+	}
+	return len(peek.Tools) > 0
+}
+
+// pseudoProviders 没有原生工具能力的提供商（免费池模型），客户端带工具时
+// 自动改走伪工具协议（提示词注入 + 标记解析还原）。
+var pseudoProviders = map[string]bool{store.PFree: true, store.POpencode: true}
+
+// engagePseudoTools 判定并改写：返回（改写后 body, 是否启用伪工具）。
+func (g *Gateway) engagePseudoTools(provName string, body []byte) ([]byte, bool) {
+	if !pseudoProviders[provName] || !requestHasTools(body) {
+		return body, false
+	}
+	return pseudotools.Engage(body), true
 }
 
 // pjEffectiveBudget 注入预算：PJLean 开启时把预算压到「完整版装不下、精简版装得下」
@@ -370,6 +422,11 @@ func (g *Gateway) pjEffectiveBudget() int {
 		}
 	}
 	return g.cfg.PJBudget
+}
+
+// FrontLeanOpts 按配置档位生成前置段注入选项（failover 重打时保持同形状）。
+func FrontLeanOpts(g *Gateway) pj.FrontOpts {
+	return pj.FrontOpts{Lean: g.cfg.PJLean}
 }
 
 // foldPJDups 折叠请求里重复出现的破甲前置段（PJCompact 开关，默认开）。
@@ -464,8 +521,10 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		sink := NewOpenAIStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		body = g.optimizeReq(model, body, rec)
-		body = g.applyPJModel(prov.Name(), bare, model, body)
-		err := g.pool.Chat(ctx, model, body, rec)
+		body, pseudo := g.engagePseudoTools(prov.Name(), body)
+		prePJ := body // 流式门重试底稿：优化后、破甲注入前
+		body = g.applyPJModelOpts(prov.Name(), bare, model, body, requestHasTools(body))
+		err := g.gateChat(ctx, prov.Name(), model, model, body, prePJ, sink, rec, pseudo)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
 		}
@@ -473,8 +532,8 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 		g.notifyAfterCall(prov.Name(), err)
 		if err != nil {
 			logx.Errorf("gateway", "chat(%s) 失败: %v", model, err)
+			// gateChat 失败时没向真 sink 写过字节，回退为标准 HTTP 错误
 			if !sink.Wrote() {
-				// 还没写出任何内容：回退为标准 HTTP 错误
 				pe := asPerr(err)
 				writeOpenAIError(w, mapClientStatus(pe), string(pe.Kind), pe.Msg)
 				return
@@ -486,8 +545,9 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	sink := NewAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	body = g.optimizeReq(model, body, rec)
+	body, pseudo := g.engagePseudoTools(prov.Name(), body)
 	prePJ := body // failover 重试底稿：优化后、破甲注入前
-	body = g.applyPJModel(prov.Name(), bare, model, body)
+	body = g.applyPJModelOpts(prov.Name(), bare, model, body, requestHasTools(body))
 	err = g.pool.Chat(ctx, model, body, rec)
 	if shareID != "" {
 		g.shares.Record(shareID, prov.Name(), rec.tokens())
@@ -507,10 +567,20 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	}
 	// 破甲 failover：回复被判拒答且还有更强策略时，用最强策略在底稿上重打一次（非流式最多一次）。
 	// 计入同一份 share 用量与 usage 记录，避免重复计费；重试结果更好才替换。
+	// 带 tools 的重试同样走前置段 only（模板在工具流里会污染 tool_calls）。
+	toolsReq := requestHasTools(prePJ)
 	if txt := openaiContentText(raw); g.shouldPJRetry(prov.Name(), txt) {
 		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
-			logx.Infof("gateway", "破甲 failover：chat(%s) 回复被判拒答，换策略 %s 重试", model, stronger)
+			logx.Infof("gateway", "破甲 failover：chat(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
 			retryBody := pj.ApplyStrategy(stronger, prePJ)
+			if toolsReq {
+				if out, changed := pj.StripTemplate(retryBody); changed {
+					retryBody = out
+				}
+				if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
+					retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
+				}
+			}
 			retrySink := NewAggregateSink(outModel)
 			retryRec := &usageRecorder{inner: retrySink}
 			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
@@ -527,6 +597,9 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
 			}
 		}
+	}
+	if pseudo {
+		raw = pseudotools.ApplyToResponse(raw)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
@@ -855,8 +928,10 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		sink := NewAnthropicStreamSink(w, fl, outModel)
 		rec := &usageRecorder{inner: sink}
 		openaiReq = g.optimizeReq(model, openaiReq, rec)
-		openaiReq = g.applyPJModel(prov.Name(), bare, model, openaiReq)
-		err := g.pool.Chat(ctx, model, openaiReq, rec)
+		openaiReq, pseudo := g.engagePseudoTools(prov.Name(), openaiReq)
+		prePJ := openaiReq // 流式门重试底稿：优化后、破甲注入前
+		openaiReq = g.applyPJModelOpts(prov.Name(), bare, model, openaiReq, requestHasTools(openaiReq))
+		err := g.gateChatAnthropic(ctx, prov.Name(), model, model, openaiReq, prePJ, sink, rec, pseudo)
 		if shareID != "" {
 			g.shares.Record(shareID, prov.Name(), rec.tokens())
 		}
@@ -877,6 +952,7 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	sink := NewAnthropicAggregateSink(outModel)
 	rec := &usageRecorder{inner: sink}
 	openaiReq = g.optimizeReq(model, openaiReq, rec)
+	openaiReq, pseudo := g.engagePseudoTools(prov.Name(), openaiReq)
 	prePJ := openaiReq // failover 重试底稿：优化后、破甲注入前
 	openaiReq = g.applyPJModel(prov.Name(), bare, model, openaiReq)
 	if err := g.pool.Chat(ctx, model, openaiReq, rec); err != nil {
@@ -900,10 +976,20 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 破甲 failover（Anthropic 形状）：拒答时用最强策略在底稿上重打一次，结果更好才替换
+	// 带 tools 的重试同样走前置段 only。
+	toolsReq := requestHasTools(prePJ)
 	if txt := anthropicRespText(raw); g.shouldPJRetry(prov.Name(), txt) {
 		if stronger := pjNextStrategy(g.pjEffectiveStrategy(model)); stronger != "" {
-			logx.Infof("gateway", "破甲 failover：messages(%s) 回复被判拒答，换策略 %s 重试", model, stronger)
+			logx.Infof("gateway", "破甲 failover：messages(%s) 回复被判拒答/空，换策略 %s 重试", model, stronger)
 			retryBody := pj.ApplyStrategy(stronger, prePJ)
+			if toolsReq {
+				if out, changed := pj.StripTemplate(retryBody); changed {
+					retryBody = out
+				}
+				if plan := pj.PlanForBudget(stronger, g.pjEffectiveBudget()); plan.Front != "" {
+					retryBody = pj.ApplyFrontOpts(plan.Front, retryBody, FrontLeanOpts(g))
+				}
+			}
 			retrySink := NewAnthropicAggregateSink(outModel)
 			retryRec := &usageRecorder{inner: retrySink}
 			if err2 := g.pool.Chat(ctx, model, retryBody, retryRec); err2 == nil {
@@ -920,6 +1006,9 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 				logx.Infof("gateway", "破甲 failover：重试调用失败，返回原结果: %v", err2)
 			}
 		}
+	}
+	if pseudo {
+		raw = pseudotools.ApplyToAnthropicResponse(raw)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(raw)

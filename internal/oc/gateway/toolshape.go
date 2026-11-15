@@ -299,6 +299,62 @@ func bindOfficialToolAliases(renames *wire.ToolRenames, declaredNames, officialN
 			}
 		}
 	}
+	bindOfficialByKeywords(renames, declaredNames)
+}
+
+// officialToolKeywords are folded-name keywords for binding an official tool to
+// a client tool the exact candidate list missed. Real clients name their shell
+// run_command, terminal, exec, … — none of which the Claude-Code-shaped
+// candidate list catches, and an unbound official tool call flows to the client
+// verbatim and dies as "unknown tool". Keywords are matched against folded
+// client names: equal beats prefix beats contains, first declared wins ties.
+var officialToolKeywords = map[string][]string{
+	"shell":     {"shell", "bash", "terminal", "command", "exec", "powershell", "cmd", "zsh", "run"},
+	"execute":   {"execute", "shell", "bash", "terminal", "command", "exec"},
+	"edit":      {"edit", "replace", "strreplace", "applydiff"},
+	"write":     {"write", "createfile", "savefile", "newfile"},
+	"read":      {"read", "view", "open", "cat", "show"},
+	"glob":      {"glob", "find", "listfiles", "ls", "dir"},
+	"grep":      {"grep", "ripgrep", "searchfiles", "searchcontent"},
+	"question":  {"askuser", "question", "ask"},
+	"skill":     {"skill"},
+	"subagent":  {"subagent", "agent", "task", "spawn"},
+	"webfetch":  {"webfetch", "fetch", "openurl", "curl", "httpget"},
+	"websearch": {"websearch", "searchweb", "websearchengine", "search"},
+	"patch":     {"patch", "applypatch", "diff"},
+}
+
+func bindOfficialByKeywords(renames *wire.ToolRenames, declaredNames []string) {
+	for official, keywords := range officialToolKeywords {
+		if _, exists := renames.Official(official); exists {
+			continue
+		}
+		best, bestScore := "", 0
+		for _, declared := range declaredNames {
+			if _, exists := renames.Wire(declared); !exists {
+				continue
+			}
+			folded := wire.Fold(declared)
+			for _, keyword := range keywords {
+				score := 0
+				switch {
+				case folded == keyword:
+					score = 4
+				case (len(folded) > len(keyword) && strings.HasPrefix(folded, keyword)) ||
+					(len(keyword) > len(folded) && strings.HasPrefix(keyword, folded) && len(folded) >= 3):
+					score = 3
+				case strings.Contains(folded, keyword):
+					score = 2
+				}
+				if score > bestScore {
+					best, bestScore = declared, score
+				}
+			}
+		}
+		if best != "" {
+			renames.BindOfficial(official, best)
+		}
+	}
 }
 
 func officialToolNameSet(v1 bool) map[string]bool {

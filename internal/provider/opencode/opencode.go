@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,9 +54,16 @@ type Provider struct {
 	mu       sync.Mutex
 	models   []provider.ModelInfo
 	modelsAt time.Time
+
+	// 出口代理池轮换状态（免费额度按出口 IP 记账，多出口分散配额）。
+	pxMu       sync.Mutex
+	pxIdx      int
+	pxCooldown map[string]time.Time // 代理 URL → 冷却截止时刻
 }
 
-func New(cfg *config.Config) *Provider { return &Provider{cfg: cfg} }
+func New(cfg *config.Config) *Provider {
+	return &Provider{cfg: cfg, pxCooldown: map[string]time.Time{}}
+}
 
 func (p *Provider) Name() string { return store.POpencode }
 
@@ -267,6 +275,75 @@ func proxyFromEnv() *url.URL {
 	return nil
 }
 
+// outletCooldownDefault 撞配额/限流且上游没给 Retry-After 时的默认冷却时长。
+const outletCooldownDefault = 30 * time.Minute
+
+// outlets 出口池：配置了 ocProxies 就解析成代理列表；否则退回系统代理
+// （单出口，行为与旧版一致）。解析失败的项跳过。
+func (p *Provider) outlets() []*url.URL {
+	var out []*url.URL
+	for _, raw := range p.cfg.OCProxies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" {
+			continue
+		}
+		switch u.Scheme {
+		case "http", "https", "socks5", "socks5h":
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 {
+		if u := proxyFromEnv(); u != nil {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// pickOutlet 轮换选出口：从 pxIdx 起找第一个不在冷却期的，命中后指针前移；
+// 全部在冷却时用 pxIdx 指的那个兜底（试一下总比直接报错强）。
+func (p *Provider) pickOutlet(pool []*url.URL) *url.URL {
+	if len(pool) == 0 {
+		return nil
+	}
+	p.pxMu.Lock()
+	defer p.pxMu.Unlock()
+	now := time.Now()
+	for i := 0; i < len(pool); i++ {
+		idx := (p.pxIdx + i) % len(pool)
+		u := pool[idx]
+		if until, cooling := p.pxCooldown[u.String()]; cooling && now.Before(until) {
+			continue
+		}
+		p.pxIdx = (idx + 1) % len(pool)
+		return u
+	}
+	u := pool[p.pxIdx%len(pool)]
+	p.pxIdx = (p.pxIdx + 1) % len(pool)
+	return u
+}
+
+// markOutletDown 出口撞限流/配额：记冷却（上游 Retry-After 优先，封顶 24h）。
+func (p *Provider) markOutletDown(u *url.URL, retryAfter string) {
+	if u == nil {
+		return
+	}
+	d := outletCooldownDefault
+	if secs, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && secs > 0 {
+		d = time.Duration(secs) * time.Second
+	}
+	if d > 24*time.Hour {
+		d = 24 * time.Hour
+	}
+	p.pxMu.Lock()
+	p.pxCooldown[u.String()] = time.Now().Add(d)
+	p.pxMu.Unlock()
+}
+
 // Chat 伪装官方 CLI 调免费档（含 tools 透传），强制流式；伪账号不参与鉴权。
 func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []byte, sink provider.Sink) error {
 	defer sink.Close()
@@ -293,11 +370,20 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 	promptChars := estimatePrompt(body)
 
 	endpoint := p.base() + "/openai" + ocwire.Path(ocwire.Chat)
-	proxy := proxyFromEnv()
+	pool := p.outlets()
+	// 多出口时尝试数跟随出口数（每撞一次墙换下一个出口），封顶 8 次。
+	attempts := chatAttempts
+	if len(pool) > 1 && attempts < len(pool) {
+		attempts = len(pool)
+	}
+	if attempts > 8 {
+		attempts = 8
+	}
 
 	var lastStatus int
 	var lastBody []byte
-	for attempt := 0; attempt < chatAttempts; attempt++ {
+	for attempt := 0; attempt < attempts; attempt++ {
+		proxy := p.pickOutlet(pool)
 		transport, err := ochttpx.NewBunTransport(ochttpx.BunOptions{
 			Proxy:                 proxy,
 			ConnectTimeout:        15 * time.Second,
@@ -332,13 +418,18 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		if resp.StatusCode < 400 {
 			return p.consume(resp.Body, sink, promptChars, renames)
 		}
+		retryAfter := resp.Header.Get("Retry-After")
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
 		transport.CloseIdleConnections()
 		lastStatus, lastBody = resp.StatusCode, b
-		// 429（配额/指纹合并报文）与 403：换全新身份重试——新项目 ID 就是新配额桶。
-		if resp.StatusCode == 429 || resp.StatusCode == 403 {
-			if attempt < chatAttempts-1 && ctx.Err() == nil {
+		// 429（配额/指纹合并报文）、403 与"配额耗尽"（上游会包在 502/4xx 里，
+		// code:"quota" 或 FreeUsageLimit）：当前出口记冷却，换新出口+新身份重试
+		// ——新项目 ID/新出口 IP 都是新的配额桶。
+		if resp.StatusCode == 429 || resp.StatusCode == 403 || isQuotaBody(b) {
+			p.markOutletDown(proxy, retryAfter)
+			if attempt < attempts-1 && ctx.Err() == nil {
+				time.Sleep(400 * time.Millisecond) // 稍缓一口气再换桶，避免连珠炮
 				continue
 			}
 		}
@@ -503,7 +594,7 @@ func classifyOC(status int, body []byte) error {
 	text := string(body)
 	lower := strings.ToLower(text)
 	switch {
-	case strings.Contains(lower, "freeusagelimit"):
+	case isQuotaBody(body):
 		return provider.Err(provider.KindQuota, status, "OpenCode 免费档配额已用尽（按出口 IP 记账，约 12 小时后恢复；也可稍后重试换新配额桶）")
 	case strings.Contains(lower, "freetiererror"):
 		return provider.Err(provider.KindServer, status, "OpenCode 免费档拒绝了本次请求（客户端指纹门变动，需要等待 TokenHub 更新）")
@@ -513,6 +604,14 @@ func classifyOC(status int, body []byte) error {
 		return provider.Err(provider.KindServer, status, "OpenCode 免费档拒绝访问（%d）：%s", status, text)
 	}
 	return provider.ClassifyBody(status, body)
+}
+
+// isQuotaBody 判断上游错误体是否为免费档配额耗尽。上游不止一种包法：
+// 429 的 FreeUsageLimit、以及包在 502/4xx 里的 {"code":"quota"}。配额按
+// "项目ID×出口IP" 记账，换新项目 ID 即新桶，因此这类失败应换身份重试。
+func isQuotaBody(body []byte) bool {
+	lower := strings.ToLower(string(body))
+	return strings.Contains(lower, "freeusagelimit") || strings.Contains(lower, `"quota"`)
 }
 
 func extractError(code any, errObj any, message string) (int64, string) {

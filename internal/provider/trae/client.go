@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -446,6 +447,74 @@ func tagIn(tags []string, text string) bool {
 	return false
 }
 
+// contactConfig 是 display_contact_config（JSON 字符串）里我们关心的部分：
+// consumption_rate=计费倍率，activity_discount=补贴/限时优惠活动。
+type contactConfig struct {
+	ConsumptionRate struct {
+		Enable bool `json:"enable"`
+		Data   struct {
+			Rate float64 `json:"rate"`
+		} `json:"data"`
+	} `json:"consumption_rate"`
+	ActivityDiscount struct {
+		Enable bool `json:"enable"`
+		Data   struct {
+			Current struct {
+				DiscountType string  `json:"discount_type"`
+				Before       float64 `json:"before_consumption_rate"`
+				After        float64 `json:"consumption_rate"`
+			} `json:"current"`
+			Member struct {
+				Before float64 `json:"before_consumption_rate"`
+				After  float64 `json:"after_consumption_rate"`
+			} `json:"member"`
+			OffPeak struct {
+				Before float64 `json:"before_consumption_rate"`
+				After  float64 `json:"after_consumption_rate"`
+			} `json:"off_peak"`
+		} `json:"data"`
+	} `json:"activity_discount"`
+}
+
+// discountTag 把活动折扣映射成徽章：专属补贴/闲时折扣/会员限时优惠。
+// 与 Trae 官方选择器的展示规则对齐（营销活动随时轮换，以当时数据为准）。
+func (c *contactConfig) discountTag() (string, string) {
+	ad := c.ActivityDiscount
+	if !ad.Enable {
+		return "", ""
+	}
+	cur := ad.Data.Current
+	switch cur.DiscountType {
+	case "subsidy":
+		if cur.After > 0 && cur.After < cur.Before {
+			return "专属补贴", "#14b8a6"
+		}
+	case "off_peak":
+		if cur.After > 0 && cur.After < cur.Before {
+			return "闲时折扣", "#22c55e"
+		}
+	}
+	if ad.Data.OffPeak.After > 0 && ad.Data.OffPeak.After < ad.Data.OffPeak.Before {
+		return "闲时折扣", "#22c55e"
+	}
+	if ad.Data.Member.After > 0 && ad.Data.Member.After < ad.Data.Member.Before {
+		return "会员限时优惠", "#22c55e"
+	}
+	return "", ""
+}
+
+// parseContactConfig 解析 display_contact_config JSON 字符串，失败返回零值。
+func parseContactConfig(raw string) *contactConfig {
+	if raw == "" {
+		return nil
+	}
+	var cc contactConfig
+	if err := json.Unmarshal([]byte(raw), &cc); err != nil {
+		return nil
+	}
+	return &cc
+}
+
 func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.ModelInfo, error) {
 	p.mmu.Lock()
 	if p.models != nil && time.Since(p.modelsAt) < time.Hour {
@@ -476,7 +545,8 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 				Tags          []string `json:"tags"`
 				ModelCapability string `json:"model_capability"`
 			} `json:"display_config"`
-			ReasoningEffort json.RawMessage `json:"reasoning_effort_config"`
+			DisplayContactConfig string          `json:"display_contact_config"`
+			ReasoningEffort      json.RawMessage `json:"reasoning_effort_config"`
 		} `json:"config_info_list"`
 	}
 	if _, err := httpx.DoJSON(ctx, "POST", agentBase(pc)+epModels, soloHeaders(acct), body, &out, 30*time.Second); err != nil {
@@ -497,6 +567,9 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 			Name:     name,
 			MaxInput: c.ContextWindow.Dev,
 			Vision:   dc.Multimodal,
+			// SOLO 协议原生支持工具：OpenAI tools 双向转换（solo.go），
+			// 实测 GLM/DeepSeek/Kimi 家族均能正确返回 tool_calls。
+			Tools: true,
 		}
 		// 思考能力：优先 reasoning_effort_config.support_thinking，
 		// 该字段缺失时回退 model_capability == "reasoning_model"。
@@ -511,6 +584,15 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 		}
 		if !mi.Reasoning && dc.ModelCapability == "reasoning_model" {
 			mi.Reasoning = true
+		}
+		// 计费倍率与优惠徽章：display_contact_config（JSON 字符串）
+		if cc := parseContactConfig(c.DisplayContactConfig); cc != nil {
+			if cc.ConsumptionRate.Enable && cc.ConsumptionRate.Data.Rate > 0 {
+				mi.Credits = "x" + strconv.FormatFloat(cc.ConsumptionRate.Data.Rate, 'f', -1, 64)
+			}
+			if text, color := cc.discountTag(); text != "" {
+				mi.Tags = append([]string{text + "|" + color}, mi.Tags...)
+			}
 		}
 		// 徽章：tags（如 Beta）加琥珀色
 		for _, tag := range dc.Tags {

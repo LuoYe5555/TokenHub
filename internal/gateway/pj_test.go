@@ -17,10 +17,12 @@ import (
 
 // stubProvider 记录上游实际收到的请求体，并按 stream 回一条像样（或拒答）的回复。
 type stubProvider struct {
-	name     string
-	got      [][]byte
-	refuse   bool
-	failWith error
+	name        string
+	got         [][]byte
+	refuse      bool
+	failWith    error
+	refuseFirst bool // 仅前 N 次拒答（配合流式门测试的 failover）
+	calls       int
 }
 
 func (s *stubProvider) Name() string { return s.name }
@@ -32,8 +34,10 @@ func (s *stubProvider) Chat(_ context.Context, _ *store.Account, req []byte, sin
 		sink.Close()
 		return s.failWith
 	}
+	s.calls++
+	refuse := s.refuse || (s.refuseFirst && s.calls == 1)
 	text := "第一步：准备环境；第二步：跑测试；第三步：看结果。"
-	if s.refuse {
+	if refuse {
 		text = "抱歉，我不能协助这个请求。"
 	}
 	sink.Delta(provider.Delta{Role: "assistant", Content: text})

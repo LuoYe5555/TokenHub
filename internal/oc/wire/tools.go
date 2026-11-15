@@ -153,6 +153,11 @@ func foldToolName(name string) string {
 	return builder.String()
 }
 
+// Fold returns the folded form of a tool name (lowercase, separators
+// stripped). Exported for the gateway's keyword alias matching, which needs to
+// compare client tool names against official-name keywords.
+func Fold(name string) string { return foldToolName(name) }
+
 // HasPrefix reports whether any wire name starts with prefix.
 func (r *ToolRenames) HasPrefix(prefix string) bool {
 	if r == nil || prefix == "" {

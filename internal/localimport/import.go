@@ -299,3 +299,24 @@ func TraeLocalVersion() string {
 	v, _ := storage["iCubeLastVersion"].(string)
 	return v
 }
+
+// WorkBuddyLocalVersion 本机 WorkBuddy 桌面客户端真实版本
+// （~/.workbuddy/app/renderer-version.json 的 version 字段，如 "5.11.3"）。
+// 读不到返回空串，调用方回退显示 API 模拟版本常量。
+func WorkBuddyLocalVersion() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".workbuddy", "app", "renderer-version.json"))
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return ""
+	}
+	return v.Version
+}
