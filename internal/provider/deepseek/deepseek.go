@@ -11,10 +11,12 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"time"
 
 	"tokenhub/internal/config"
+	"tokenhub/internal/logx"
 	"tokenhub/internal/httpx"
 	"tokenhub/internal/provider"
 	"tokenhub/internal/store"
@@ -92,6 +94,8 @@ func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.
 // ── 账号信息 ──
 
 // fetchUser 校验令牌并取账号信息（GET /api/v0/users/current）。
+// 顺带滚动令牌：响应里的 token 是服务端当前会话凭据，网页前端会定期换发，
+// 若与本地不同则就地更新（调用方负责落盘），避免本地副本被网页端轮换甩掉后失效。
 func (p *Provider) fetchUser(ctx context.Context, acct *store.Account) (map[string]any, error) {
 	var out map[string]any
 	status, err := httpx.DoJSON(ctx, "GET", p.base()+"/api/v0/users/current", headers(acct, p.base(), ""), nil, &out, 30*time.Second)
@@ -107,6 +111,15 @@ func (p *Provider) fetchUser(ctx context.Context, acct *store.Account) (map[stri
 	}
 	if status >= 400 {
 		return nil, provider.ClassifyBody(status, nil)
+	}
+	// 滚动令牌：users/current 的 biz_data.token 恒为服务端当前有效凭据
+	if data, ok := out["data"].(map[string]any); ok {
+		if biz, ok := data["biz_data"].(map[string]any); ok {
+			if tok, _ := biz["token"].(string); tok != "" && tok != acct.AccessToken {
+				logx.Infof(store.PDeepSeek, "账号 %s 令牌已滚动更新（网页端轮换，本地副本同步为最新）", acct.DisplayedName())
+				acct.AccessToken = tok
+			}
+		}
 	}
 	return out, nil
 }
@@ -143,7 +156,9 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 	return false, "", provider.ErrCheckinUnsupported
 }
 
-// Refresh 网页版令牌无刷新机制：校验有效性，失效只能重新浏览器导入。
+// Refresh 校验并滚动令牌（users/current 返回服务端当前凭据）。
+// 定时额度刷新 / 面板刷新 / 池子 40003 自愈重试都会走到这里，
+// 本地副本随网页端轮换自动保持最新，无需频繁重新导入。
 func (p *Provider) Refresh(ctx context.Context, acct *store.Account) error {
 	_, err := p.fetchUser(ctx, acct)
 	return err
@@ -154,12 +169,43 @@ func (p *Provider) Refresh(ctx context.Context, acct *store.Account) error {
 // parsedReq 解析后的对话请求。
 type parsedReq struct {
 	model    string
+	system   string
+	turns    []string
 	content  string
 	thinking bool
 }
 
 // promptChars 上游不回 usage 时的粗估依据。
 func (r *parsedReq) promptChars() int { return len([]rune(r.content)) }
+
+// render 把 system + turns 重新折叠为单条 prompt。
+func (r *parsedReq) render() string {
+	content := strings.Join(r.turns, "<｜User｜>")
+	if r.system != "" {
+		if content != "" {
+			content = r.system + "\n\n" + content
+		} else {
+			content = r.system
+		}
+	}
+	return content
+}
+
+func (r *parsedReq) rebuild() { r.content = r.render() }
+
+// 上游 prompt 上限：实测约 480KB（UTF-8 字节，~16.4 万中文字符）硬顶，超限报
+// 「Content is too long. Please shorten it and try again.」。
+// 注意：2026-11 中旬起上游对免费网页版动态收紧（公开报道单次输入压到约 4 万字，
+// 且随当日用量/负载浮动），实际可接受大小可能远小于硬顶——因此除预折叠外
+// 还需按梯度收缩重试。留 20KB 余量，避免边界抖动。
+const maxPromptBytes = 460 * 1024
+
+// 超长重试的收缩目标（逐级更狠）：覆盖上游动态收紧的场景，
+// 最后一档 32KB（~1 万中文字符）保证即使限额最紧也能发出。
+var shrinkTargets = [3]int{256 * 1024, 96 * 1024, 32 * 1024}
+
+// reTooLong 上游「内容超长」错误（发送前折叠后仍超限时出现）。
+var reTooLong = regexp.MustCompile(`(?i)content is too long|please shorten`)
 
 // parseReq 把 OpenAI 请求折叠为网页版的单条 user prompt
 // （多轮用 <｜User｜>/<｜Assistant｜> 特殊标记折叠，与 qwen provider 同构；
@@ -270,18 +316,80 @@ func parseReq(openaiReq []byte, defaultModel string) (*parsedReq, error) {
 			}
 		}
 	}
-	content := strings.Join(conv, "<｜User｜>")
-	if system != "" {
-		if content != "" {
-			content = system + "\n\n" + content
-		} else {
-			content = system
-		}
-	}
-	if content == "" {
+	req := &parsedReq{model: model, system: system, turns: conv, thinking: thinking}
+	req.rebuild()
+	if req.content == "" {
 		return nil, provider.Err(provider.KindClient, 400, "messages 为空")
 	}
-	return &parsedReq{model: model, content: content, thinking: thinking}, nil
+	return req, nil
+}
+
+// ── 超长折叠 ──
+
+// elideMiddle 超长文本掐头留尾，中间换成省略标记（保留开头的指令与结尾的上下文）。
+// 按字节预算，避免切在 UTF-8 字符中间。
+func elideMiddle(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	const marker = "\n\n…[中间内容过长已截断]…\n\n"
+	half := (maxBytes - len(marker)) / 2
+	if half < 128 {
+		half = maxBytes / 3
+		if half < 1 {
+			half = 1
+		}
+	}
+	head := s
+	// 截到不超过 half 的合法 UTF-8 边界
+	cut := half
+	for cut > 0 {
+		if r, size := utf8.DecodeLastRuneInString(s[:cut]); r == utf8.RuneError && size <= 1 {
+			cut--
+			continue
+		}
+		break
+	}
+	head = s[:cut]
+	tailStart := len(s) - half
+	for tailStart < len(s) {
+		r, size := utf8.DecodeRuneInString(s[tailStart:])
+		if r == utf8.RuneError && size == 1 {
+			tailStart++
+			continue
+		}
+		break
+	}
+	tail := s[tailStart:]
+	return head + marker + tail
+}
+
+// shrink 把请求折叠到 maxBytes 以内：
+// ① 每段 turn 掐中间（保留每段开头/结尾）；② 不够再丢最老的 turn（始终保留最后一个 turn，
+// 那是当前请求本身）；③ 仍超限对最后一个 turn 单独掐。system（伪工具协议指令）永远保留。
+func (r *parsedReq) shrink(maxBytes int) {
+	const turnCap = 32 * 1024
+	for i, t := range r.turns {
+		if len(t) > turnCap {
+			r.turns[i] = elideMiddle(t, turnCap)
+		}
+	}
+	if len(r.system) > maxBytes/2 {
+		r.system = elideMiddle(r.system, maxBytes/2)
+	}
+	r.rebuild()
+	for len(r.turns) > 1 && len(r.content) > maxBytes {
+		r.turns = r.turns[1:]
+		r.rebuild()
+	}
+	if len(r.content) > maxBytes && len(r.turns) == 1 {
+		budget := maxBytes - len(r.system) - 2048
+		if budget < 2048 {
+			budget = 2048
+		}
+		r.turns[0] = elideMiddle(r.turns[0], budget)
+		r.rebuild()
+	}
 }
 
 // ── 上游调用 ──
@@ -398,12 +506,45 @@ func numField(m map[string]any, key string, def int64) int64 {
 }
 
 // Chat 实现 provider.Provider。
+// 发送前把超过上游字节上限（~480KB）的 prompt 预折叠；若上游仍报超长
+// （按 token 计数的场景），按梯度收缩后重试（最多 2 次）。超长错误均发生在
+// 吐出任何内容之前，重试不会产生重复输出。
 func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []byte, sink provider.Sink) error {
 	req, err := parseReq(openaiReq, p.cfg.PC(store.PDeepSeek).DefaultModel)
 	if err != nil {
 		sink.Close()
 		return err
 	}
+	logx.Infof(store.PDeepSeek, "账号 %s prompt 解析: %d turns, system %d 字节, 共 %d 字节",
+		acct.DisplayedName(), len(req.turns), len(req.system), len(req.content))
+	if len(req.content) > maxPromptBytes {
+		before := len(req.content)
+		req.shrink(maxPromptBytes)
+		logx.Infof(store.PDeepSeek, "超限预折叠: %d → %d 字节", before, len(req.content))
+	}
+	for attempt := 0; attempt < 1+len(shrinkTargets); attempt++ {
+		if attempt > 0 {
+			before := len(req.content)
+			req.shrink(shrinkTargets[attempt-1])
+			logx.Infof(store.PDeepSeek, "上游仍嫌长，第 %d 次收缩重试: %d → %d 字节", attempt, before, len(req.content))
+		}
+		err := p.chatOnce(ctx, acct, req, sink)
+		if err == nil {
+			return nil
+		}
+		logx.Infof(store.PDeepSeek, "尝试 %d/%d 失败: %v", attempt+1, 1+len(shrinkTargets), err)
+		if !reTooLong.MatchString(err.Error()) {
+			return err
+		}
+		// 上游仍嫌长：收缩后重试
+	}
+	return provider.Err(provider.KindStream, 200,
+		"DeepSeek 上游持续报内容超长（已自动截断历史收缩到 %d 字节仍被拒，上游限额可能已动态收紧）。"+
+			"建议在客户端开新会话或精简上下文后重试", len(req.content))
+}
+
+// chatOnce 单次完整对话：建会话 → PoW → 发送 → 解析 SSE。
+func (p *Provider) chatOnce(ctx context.Context, acct *store.Account, req *parsedReq, sink provider.Sink) error {
 	// 1) 新建会话
 	sessionID, err := p.createSession(ctx, acct)
 	if err != nil {

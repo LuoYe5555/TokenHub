@@ -325,23 +325,20 @@ func (t *trackingSink) StreamError(c int64, m string) { t.inner.StreamError(c, m
 func (t *trackingSink) Close()                        { t.inner.Close() }
 
 // RefreshAccount 刷新账号凭据，统一入口（面板按钮 / 定时任务 / 请求时按需刷新共用）。
-// 策略：有 refreshToken 先走上游刷新；没有、或刷新失败（可能 refreshToken 已被
-// 客户端轮换作废）时，回退到「从本机客户端重新同步凭据」——客户端自己会轮换
-// token，重读本地会话即可拿到最新值（与 CreditDaddy 的续期思路一致）。
+// 策略：一律先走上游 Refresh（校验型 provider 如 DeepSeek 顺带滚动令牌；
+// 有 refreshToken 的走上游换取）；失败时回退「从本机客户端重新同步凭据」——
+// 客户端自己会轮换 token，重读本地会话即可拿到最新值（与 CreditDaddy 的续期思路一致）。
 func (p *Pool) RefreshAccount(ctx context.Context, acct *store.Account) error {
 	prov := p.Provider(acct.Provider)
 	if prov == nil {
 		return provider.Err(provider.KindServer, 0, "提供商不可用")
 	}
-	var rerr error
-	if acct.RefreshToken != "" {
-		rerr = prov.Refresh(ctx, acct)
-		if rerr == nil {
-			p.clearCooldown(acct)
-			return nil
-		}
-		logx.Warnf(prov.Name(), "账号 %s 上游刷新失败，尝试本机同步: %v", acct.DisplayedName(), rerr)
+	rerr := prov.Refresh(ctx, acct)
+	if rerr == nil {
+		p.clearCooldown(acct)
+		return nil
 	}
+	logx.Warnf(prov.Name(), "账号 %s 上游刷新失败，尝试本机同步: %v", acct.DisplayedName(), rerr)
 	if ls, ok := prov.(provider.LocalSyncer); ok {
 		if serr := ls.SyncFromLocal(acct); serr == nil {
 			logx.Infof(prov.Name(), "账号 %s 已从本机客户端重新同步凭据", acct.DisplayedName())

@@ -612,6 +612,10 @@ func (g *Gateway) openaiChat(w http.ResponseWriter, r *http.Request) {
 	if pseudo {
 		raw = pseudotools.ApplyToResponse(raw)
 	}
+	if out, stripped := pseudotools.StripDSML(raw); stripped {
+		logx.Infof("gateway", "已剥离响应中的 DSML 泄漏标记")
+		raw = out
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	_, _ = w.Write(raw)
@@ -1027,6 +1031,10 @@ func (g *Gateway) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	}
+	if out, stripped := pseudotools.StripDSML(raw); stripped {
+		logx.Infof("gateway", "已剥离响应中的 DSML 泄漏标记")
+		raw = out
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(raw)

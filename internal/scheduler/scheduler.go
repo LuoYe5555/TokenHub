@@ -231,10 +231,9 @@ func (s *Scheduler) RunDeadRevive(ctx context.Context) {
 		if prov == nil {
 			continue
 		}
-		_, hasSync := prov.(provider.LocalSyncer)
-		if acct.RefreshToken == "" && !hasSync {
-			continue // 没有任何刷新途径，复活无望
-		}
+		// 不再按 refreshToken/LocalSyncer 设门禁：校验型 provider（如 deepseek
+		// 的 users/current 滚动）没有 refreshToken 也能刷新成功，直接尝试，
+		// RefreshAccount 失败自然留在死亡态下小时再试
 		if err := s.pool.RefreshAccount(ctx, acct); err != nil {
 			continue // 仍失败，下小时再试
 		}
@@ -282,7 +281,12 @@ func (s *Scheduler) RefreshOne(acctID string) {
 	if err != nil {
 		return
 	}
-	_ = s.store.Mutate(acctID, func(x *store.Account) { x.LastQuota = snap })
+	_ = s.store.Mutate(acctID, func(x *store.Account) {
+		x.LastQuota = snap
+		if acct.AccessToken != "" && x.AccessToken != "" && acct.AccessToken != x.AccessToken {
+			x.AccessToken = acct.AccessToken
+		}
+	})
 	s.rejoinIfRecovered(acct, snap)
 	s.autoSwitchIfExhausted(acct, snap)
 }
@@ -327,7 +331,14 @@ func (s *Scheduler) refreshAll(ctx context.Context) {
 			if err != nil {
 				return
 			}
-			_ = s.store.Mutate(a.ID, func(x *store.Account) { x.LastQuota = snap })
+			_ = s.store.Mutate(a.ID, func(x *store.Account) {
+				x.LastQuota = snap
+				// 滚动型 provider（如 deepseek users/current）可能在 Quota 期间
+				// 就地更新了令牌副本，落盘保持与网页端同步
+				if a.AccessToken != "" && x.AccessToken != "" && a.AccessToken != x.AccessToken {
+					x.AccessToken = a.AccessToken
+				}
+			})
 			s.rejoinIfRecovered(a, snap)
 			s.autoSwitchIfExhausted(a, snap)
 		}(acct, p)

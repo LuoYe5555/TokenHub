@@ -86,10 +86,15 @@ func TestParseText(t *testing.T) {
 	if len(calls2) != 1 || calls2[0].Args != "{\"a\":1}" {
 		t.Errorf("string args 解析失败: %+v", calls2)
 	}
-	// 未闭合标记不吞正文
+	// 未闭合标记：JSON 可抢救时消费为调用，前置正文保留（2026-11-21 线上样本）
 	content3, calls3 := ParseText("前文<tool_call>{\"name\":\"f\"}")
-	if content3 == "" || calls3 != nil {
-		t.Errorf("未闭合处理异常: content=%q calls=%+v", content3, calls3)
+	if content3 != "前文" || len(calls3) != 1 || calls3[0].Name != "f" {
+		t.Errorf("未闭合抢救异常: content=%q calls=%+v", content3, calls3)
+	}
+	// 彻底无法解析（无 name）时才保留正文
+	content4, calls4 := ParseText("前文<tool_call>纯文本没有JSON")
+	if content4 == "" || calls4 != nil {
+		t.Errorf("未闭合无JSON应保留正文: content=%q calls=%+v", content4, calls4)
 	}
 }
 
@@ -199,6 +204,109 @@ func TestParseTextAttributeJSON(t *testing.T) {
 	var a4 map[string]any
 	if json.Unmarshal([]byte(calls4[0].Args), &a4) != nil || a4["command"] != "echo hi" {
 		t.Errorf("args4=%q", calls4[0].Args)
+	}
+}
+
+// DeepSeek 网页模型自带 DSML 内部格式（2026-11-21 线上实测样本）：
+// <｜DSML｜calls><｜DSML｜invoke name="pwsh"><｜DSML｜parameter name="command"
+// string="true">…</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜calls>
+func TestParseTextDSML(t *testing.T) {
+	text := "<｜DSML｜calls> <｜DSML｜invoke name=\"pwsh\"> <｜DSML｜parameter name=\"command\" string=\"true\">d = \"C:\\Users\\test\"; Get-ChildItem d -Force</｜DSML｜parameter> <｜DSML｜parameter name=\"description\" string=\"true\">检查目标目录</｜DSML｜parameter> </｜DSML｜invoke> </｜DSML｜calls>"
+	content, calls := ParseText(text)
+	if strings.TrimSpace(content) != "" {
+		t.Errorf("正文未清理: %q", content)
+	}
+	if len(calls) != 1 || calls[0].Name != "pwsh" {
+		t.Fatalf("calls=%+v", calls)
+	}
+	var a map[string]any
+	if json.Unmarshal([]byte(calls[0].Args), &a) != nil {
+		t.Fatalf("args 不合法: %q", calls[0].Args)
+	}
+	if a["command"] != "d = \"C:\\Users\\test\"; Get-ChildItem d -Force" {
+		t.Errorf("command=%q", a["command"])
+	}
+	if a["description"] != "检查目标目录" {
+		t.Errorf("description=%q", a["description"])
+	}
+
+	// 半角竖线 |DSML| 变体 + 多调用 + 前置正文
+	text2 := "先查一下。<|DSML|calls><|DSML|invoke name=\"read_file\"><|DSML|parameter name=\"path\">a.txt</|DSML|parameter></|DSML|invoke><|DSML|invoke name=\"pwsh\"><|DSML|parameter name=\"command\" string=\"true\">dir</|DSML|parameter></|DSML|invoke></|DSML|calls>"
+	content2, calls2 := ParseText(text2)
+	if content2 != "先查一下。" {
+		t.Errorf("content2=%q", content2)
+	}
+	if len(calls2) != 2 || calls2[0].Name != "read_file" || calls2[1].Name != "pwsh" {
+		t.Fatalf("calls2=%+v", calls2)
+	}
+	var a2 map[string]any
+	json.Unmarshal([]byte(calls2[0].Args), &a2)
+	if a2["path"] != "a.txt" {
+		t.Errorf("path=%q", a2["path"])
+	}
+
+	// 未闭合块：整体剥离不残留 DSML
+	text3 := "<｜DSML｜invoke name=\"pwsh\"><｜DSML｜parameter name=\"command\" string=\"true\">echo hi"
+	content3, calls3 := ParseText(text3)
+	if strings.Contains(content3, "DSML") {
+		t.Errorf("未闭合 DSML 残留: %q", content3)
+	}
+	if len(calls3) != 1 || calls3[0].Name != "pwsh" {
+		t.Fatalf("calls3=%+v", calls3)
+	}
+	var a3 map[string]any
+	json.Unmarshal([]byte(calls3[0].Args), &a3)
+	if a3["command"] != "echo hi" {
+		t.Errorf("command3=%q", a3["command"])
+	}
+}
+
+// 无 tools 请求（伪工具协议未启用）也会漏 DSML：模型复述上一轮调用。
+// StripDSML 必须无条件剥离、且不产生 tool_calls。
+func TestStripDSML(t *testing.T) {
+	raw := []byte(`{"choices":[{"message":{"role":"assistant","content":"环境确认完毕。\n<｜DSML｜calls><｜DSML｜invoke name=\"pwsh\"><｜DSML｜parameter name=\"command\" string=\"true\">Get-ChildItem $d -Force</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜calls>"},"finish_reason":"stop"}]}`)
+	out, stripped := StripDSML(raw)
+	if !stripped {
+		t.Fatal("未检测到 DSML 剥离")
+	}
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []any  `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(out, &resp) != nil {
+		t.Fatal("输出不合法")
+	}
+	c := resp.Choices[0].Message
+	if c.Content != "环境确认完毕。" {
+		t.Errorf("content=%q", c.Content)
+	}
+	if len(c.ToolCalls) != 0 {
+		t.Errorf("无 tools 请求不应产生 tool_calls: %+v", c.ToolCalls)
+	}
+	// 无 DSML 时零拷贝
+	if out2, s2 := StripDSML([]byte(`{"choices":[{"message":{"content":"正常"}}]}`)); s2 || string(out2) != `{"choices":[{"message":{"content":"正常"}}]}` {
+		t.Errorf("无 DSML 不应改写: %s", out2)
+	}
+	// 变体：双竖线、带空格、小写
+	raw2 := []byte(`{"choices":[{"message":{"content":"<|| DSML || invoke name=\"f\"><|| DSML || parameter name=\"a\">v</|| DSML || parameter></|| DSML || invoke>尾声"}}]}`)
+	out2, s2 := StripDSML(raw2)
+	if !s2 {
+		t.Fatal("变体未剥离")
+	}
+	var resp2 struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	json.Unmarshal(out2, &resp2)
+	if resp2.Choices[0].Message.Content != "尾声" {
+		t.Errorf("变体 content=%q", resp2.Choices[0].Message.Content)
 	}
 }
 
@@ -322,5 +430,115 @@ func TestApplyToAnthropicResponse(t *testing.T) {
 	}
 	if toolCount != 1 || textCount != 1 {
 		t.Errorf("content 块异常: %+v", resp.Content)
+	}
+}
+
+// 2026-11-21 线上实测：DSML 标签被打散（竖线间带空格、</ 后带空格），且
+// <tool_call> 未闭合、JSON 中途断掉混入 DSML 残片——两个变体叠加泄漏。
+func TestParseTextDSMLSpacedAndHybrid(t *testing.T) {
+	// ① 打散的 DSML 标签：specific 正则 + loose 扫尾都要能清
+	text := "开头 </ | | DSML | | parameter> < | | DSML | | parameter name=\"description\" string=\"true\">验证直连与 GPT 分流行为</ | | DSML | | parameter> </ | | DSML | | invoke>"
+	content, calls := ParseText(text)
+	if strings.Contains(content, "DSML") || strings.Contains(content, "|") {
+		t.Errorf("打散 DSML 残留: %q", content)
+	}
+	if len(calls) != 0 {
+		t.Errorf("纯残渣不应产生调用: %+v", calls)
+	}
+
+	// ② 完整混合场景（截图还原）：未闭合 <tool_call> + 断裂 JSON（裸换行、
+	// PowerShell 花括号）+ 打散 DSML 残片 → 抢救成一个调用，正文零残留
+	text2 := "<tool_call>{\"arguments\":{\"command\":\"cd \\\"C:\\\\Users\\\\30955\\\\Desktop\\\\test\\\"; \"===[step]===\"; try{r=1}catch{ \"err \" + 1 };\"done\",\"description\":\"验证\",\"name\":\"pwsh\"} </ | | DSML | | parameter> < | | DSML | | parameter name=\"description\" string=\"true\">验证直连</ | | DSML | | parameter> </ | | DSML | | invoke>"
+	content2, calls2 := ParseText(text2)
+	if strings.Contains(content2, "DSML") || strings.Contains(content2, "tool_call") {
+		t.Errorf("混合场景正文残留: %q", content2)
+	}
+	if len(calls2) != 1 || calls2[0].Name != "pwsh" {
+		t.Fatalf("混合场景 calls=%+v", calls2)
+	}
+	var a map[string]any
+	if json.Unmarshal([]byte(calls2[0].Args), &a) != nil {
+		t.Fatalf("args 不合法: %q", calls2[0].Args)
+	}
+	if cmd, _ := a["command"].(string); !strings.Contains(cmd, "Desktop") {
+		t.Errorf("command 未抢救出: %q", calls2[0].Args)
+	}
+
+	// ③ StripDSML 对打散变体也生效（无 tools 轮次的复述场景）
+	raw := []byte(`{"choices":[{"message":{"content":"结论 </ | | DSML | | parameter> </ | | DSML | | invoke>"}}]}`)
+	out, stripped := StripDSML(raw)
+	if !stripped {
+		t.Fatal("打散变体未触发剥离")
+	}
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	json.Unmarshal(out, &resp)
+	if strings.Contains(resp.Choices[0].Message.Content, "DSML") {
+		t.Errorf("StripDSML 后残留: %q", resp.Choices[0].Message.Content)
+	}
+}
+
+// 2026-11-21 晚线上实测：「继续」续写场景模型把内部会话模板当正文吐出来
+//（<｜end of sentence｜><｜User｜>继续…），且把历史 tool_result 原样复述。
+func TestStripInternalTokensAndToolResult(t *testing.T) {
+	// ① 模板标记剥掉、夹着的正文保留
+	text := "<｜end of sentence｜><｜User｜>继续<｜User｜>问题找到了：管道混流了。<｜Assistant｜>先停止旧进程再重跑。"
+	content, calls := ParseText(text)
+	if strings.Contains(content, "｜") || strings.Contains(content, "end of sentence") {
+		t.Errorf("模板标记残留: %q", content)
+	}
+	if !strings.Contains(content, "继续") || !strings.Contains(content, "问题找到了") {
+		t.Errorf("正文被误删: %q", content)
+	}
+	if len(calls) != 0 {
+		t.Errorf("不应产生调用: %+v", calls)
+	}
+
+	// ② 半角竖线变体 + tool_result 完整块连内容剥掉
+	text2 := "先看结果。<|end of sentence|><tool_result name=\"call_abc123\">=== 规则匹配测试 ===\\n[FAIL] check</tool_result>结论如下。"
+	content2, _ := ParseText(text2)
+	if strings.Contains(content2, "tool_result") || strings.Contains(content2, "FAIL") || strings.Contains(content2, "end of sentence") {
+		t.Errorf("回声/标记残留: %q", content2)
+	}
+	if !strings.Contains(content2, "结论如下") || !strings.Contains(content2, "先看结果") {
+		t.Errorf("正文被误删: %q", content2)
+	}
+
+	// ③ 未闭合 tool_result：标记剥掉
+	content3, _ := ParseText("开头 <tool_result name=\"call_x\">未闭合内容")
+	if strings.Contains(content3, "tool_result") {
+		t.Errorf("未闭合标记残留: %q", content3)
+	}
+
+	// ④ 无 tools 轮次：StripDSML 一并处理模板标记与回声
+	raw := []byte(`{"choices":[{"message":{"content":"<｜end of sentence｜><｜User｜>继续<tool_result name=\"c1\">noise</tool_result>好了"}}]}`)
+	out, stripped := StripDSML(raw)
+	if !stripped {
+		t.Fatal("未触发剥离")
+	}
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	json.Unmarshal(out, &resp)
+	c := resp.Choices[0].Message.Content
+	if strings.Contains(c, "｜") || strings.Contains(c, "tool_result") || strings.Contains(c, "noise") {
+		t.Errorf("StripDSML 清理不彻底: %q", c)
+	}
+	if !strings.Contains(c, "好了") {
+		t.Errorf("正文被误删: %q", c)
+	}
+
+	// ⑤ 零拷贝：无任何噪音痕迹
+	if out2, s2 := StripDSML([]byte(`{"choices":[{"message":{"content":"正常中文"}}]}`)); s2 || string(out2) != `{"choices":[{"message":{"content":"正常中文"}}]}` {
+		t.Errorf("无噪音不应改写: %s", out2)
 	}
 }

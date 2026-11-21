@@ -5,6 +5,7 @@
 package pseudotools
 
 import (
+	"bytes"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -23,6 +24,38 @@ var invokeNameRe = regexp.MustCompile(`name\s*=\s*(?:"([^"]+)"|'([^']+)')`)
 // invokeParamRe 匹配 <parameter name="key">。
 var invokeParamRe = regexp.MustCompile(`<parameter\s+name\s*=\s*"([^"]+)"\s*>`)
 
+// ── DSML：DeepSeek 网页模型自带的内部工具调用格式 ──
+// <｜DSML｜calls><｜DSML｜invoke name="pwsh"><｜DSML｜parameter name="command"
+// string="true">…</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜calls>
+// 竖线全角｜/半角|都认；条数 1-2、内部空格、大小写均宽容（模型输出不稳定）。
+// 实测还会被打散成 "</ | | DSML | | parameter>"：竖线之间、</ 之后都有空格。
+// dsmlPipe 匹配 1-2 根竖线，中间可夹空格。
+const dsmlPipe = `[｜|]\s*[｜|]?`
+
+var (
+	dsmlInvokeOpen  = regexp.MustCompile(`(?i)<\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*invoke[^>]*>`)
+	dsmlInvokeClose = regexp.MustCompile(`(?i)</\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*invoke\s*>`)
+	dsmlParamOpen   = regexp.MustCompile(`(?i)<\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*parameter[^>]*>`)
+	dsmlParamClose  = regexp.MustCompile(`(?i)</\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*parameter\s*>`)
+	dsmlWrapper     = regexp.MustCompile(`(?i)</?\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*calls\s*>`)
+	// 兜底扫尾：以上specific匹配漏掉的任意 DSML 残渣（标签被彻底打散时）
+	dsmlLoose = regexp.MustCompile(`(?i)</?\s*[｜|]{1,4}[\s|｜]*DSML[^>]{0,80}>`)
+	// invoke 块之外的完整 parameter 块（开+闭都完好）：内容是内部噪音连带清掉
+	dsmlParamBlock = regexp.MustCompile(`(?is)<\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*parameter[^>]*>.*?</\s*` + dsmlPipe + `\s*DSML\s*` + dsmlPipe + `\s*parameter\s*>`)
+
+	// ── DeepSeek 会话模板特殊标记 ──
+	// 「继续」续写场景高发：模型把内部对话模板当正文吐出来——
+	// <｜end of sentence｜><｜User｜>继续<｜Assistant｜>…（竖线全/半角都见）。
+	// 标记是纯噪音，夹着的正文要保留；DSML 标签尾部不是 ｜>，不会被误伤。
+	dsmlSpecialRe = regexp.MustCompile(`<\s*[｜|][^>]{0,48}?[｜|]\s*>`)
+
+	// ── tool_result 回声 ──
+	// 模型把历史里的 <tool_result name="call_xxx">…</tool_result> 原样复述进
+	// 回复（幻觉工具侧输出）。完整块连内容剥掉；未闭合时只剥标记本身。
+	toolResultBlockRe = regexp.MustCompile(`(?is)<tool_result\s[^>]*>.*?</tool_result\s*>`)
+	toolResultTagRe    = regexp.MustCompile(`(?i)</?tool_result[^>]*>`)
+)
+
 // wrapperTokens 部分模型（如 ERNIE）会自带包裹标记，先剥掉再解析。
 var wrapperTokens = []string{
 	"<ernie:tool_call>", "</ernie:tool_call>", "ernie:tool_call",
@@ -37,7 +70,8 @@ func protocolPrompt(tools []any) string {
 	b.WriteString("<tool_call>{\"name\":\"工具名\",\"arguments\":{\"参数\":\"值\"}}</tool_call>\n")
 	b.WriteString("输出该标记后立即停止，等待系统以 <tool_result name=\"工具名\">…</tool_result> 返回结果后再继续回答。\n")
 	b.WriteString("不需要工具时直接正常回答，绝不输出 <tool_call> 标记。arguments 必须是合法 JSON 对象。\n")
-	b.WriteString("只允许上述 JSON 标记格式，严禁输出 <invoke>、<parameter> 等 XML 风格的工具调用。\n")
+	b.WriteString("只允许上述 JSON 标记格式，严禁输出 <invoke>、<parameter>、<｜DSML｜invoke>、<｜DSML｜parameter> 等 XML/内部标记风格的工具调用。\n")
+	b.WriteString("严禁把 <｜User｜>、<｜Assistant｜>、<｜end of sentence｜>、<tool_result> 等内部/历史标记写进回复，也不要复述历史工具结果。\n")
 	b.WriteString("工具调用标记必须写在最终回复正文里，严禁放进思考/推理过程，也不要把 JSON 塞进标签属性。\n")
 	b.WriteString("## 可用工具\n")
 	for _, tv := range tools {
@@ -178,6 +212,109 @@ func Engage(body []byte) []byte {
 type Call struct {
 	Name string
 	Args string // arguments 的 JSON 字符串（OpenAI 形状）
+}
+
+// extractDSMLBlocks 剥离并解析 DeepSeek 网页模型自带的 DSML 工具调用块。
+// 未闭合时也整体剥离（DSML 是纯噪音，留着只会污染回复正文）。
+func extractDSMLBlocks(text string) (string, []Call) {
+	if !strings.Contains(text, "DSML") && !strings.Contains(text, "dsml") {
+		return text, nil
+	}
+	text = dsmlWrapper.ReplaceAllString(text, "")
+	var b strings.Builder
+	var calls []Call
+	for {
+		loc := dsmlInvokeOpen.FindStringIndex(text)
+		if loc == nil {
+			b.WriteString(text)
+			break
+		}
+		b.WriteString(text[:loc[0]])
+		openText := text[loc[0]:loc[1]]
+		rest := text[loc[1]:]
+		var block string
+		if cl := dsmlInvokeClose.FindStringIndex(rest); cl != nil {
+			block, rest = rest[:cl[0]], rest[cl[1]:]
+		} else { // 未闭合：从开标签到结尾全当块剥掉
+			block, rest = rest, ""
+		}
+		name := ""
+		if m := invokeNameRe.FindStringSubmatch(openText); m != nil {
+			if m[1] != "" {
+				name = m[1]
+			} else {
+				name = m[2]
+			}
+		}
+	if name == "" {
+		text = rest
+		continue
+	}
+	calls = append(calls, Call{Name: name, Args: dsmlArgs(block)})
+	text = rest
+	}
+	// 扫尾：invoke 块之外残留的 parameter 块（内容是模型内部噪音）连带清掉，
+	// 再用 loose 正则清掉彻底打散的标签残渣。
+	out := b.String()
+	if strings.Contains(out, "DSML") || strings.Contains(out, "dsml") {
+		out = dsmlParamBlock.ReplaceAllString(out, "")
+		out = dsmlLoose.ReplaceAllString(out, "")
+	}
+	return out, calls
+}
+
+// dsmlArgs 解析 DSML invoke 块里的参数：
+// <｜DSML｜parameter name="key" string="true">值</｜DSML｜parameter>。
+// string="true" 表示值恒为字符串；没有参数时整块尝试按 JSON 解析。
+func dsmlArgs(block string) string {
+	opens := dsmlParamOpen.FindAllStringSubmatchIndex(block, -1)
+	if len(opens) == 0 {
+		var obj map[string]any
+		if json.Unmarshal([]byte(strings.TrimSpace(block)), &obj) == nil && obj != nil {
+			raw, err := json.Marshal(obj)
+			if err == nil {
+				return string(raw)
+			}
+		}
+		return "{}"
+	}
+	params := map[string]any{}
+	for idx, loc := range opens {
+		openText := block[loc[0]:loc[1]]
+		m := invokeNameRe.FindStringSubmatch(openText)
+		if m == nil {
+			continue
+		}
+		key := m[1]
+		if key == "" {
+			key = m[2]
+		}
+		end := len(block)
+		if idx+1 < len(opens) {
+			end = opens[idx+1][0]
+		}
+		seg := block[loc[1]:end]
+		if cl := dsmlParamClose.FindStringIndex(seg); cl != nil {
+			seg = seg[:cl[0]]
+		}
+		val := strings.TrimSpace(seg)
+		// string="true" 属性声明值是字符串：即使长得像 JSON 也保持字符串
+		if strings.Contains(openText, `string="true"`) || strings.Contains(openText, `string='true'`) {
+			params[key] = val
+		} else {
+			var decoded any
+			if json.Unmarshal([]byte(val), &decoded) == nil { // 数字/布尔/嵌套 JSON 保留原类型
+				params[key] = decoded
+			} else {
+				params[key] = val
+			}
+		}
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
 }
 
 // extractInvokeBlocks 兼容模型自作主张输出的 XML 风格调用：
@@ -354,6 +491,88 @@ func salvageArgs(payload string) string {
 	return "{}"
 }
 
+// 字段边界兜底：断裂 JSON 里值内部的引号混乱会让括号配对的状态机失去同步
+// （扫到结尾还停在字符串里，最后一个 } 永远配不上对）。但字段边界 ,"key":
+// 仍清晰——按边界切字段、值内部引号原样保留，最后 json.Marshal 统一转义。
+var (
+	fieldBoundaryRe = regexp.MustCompile(`,\s*"([A-Za-z0-9_.-]+)"\s*:`)
+	headFieldRe     = regexp.MustCompile(`^\s*"([A-Za-z0-9_.-]+)"\s*:`)
+)
+
+// salvageFields 从断裂的 {"arguments":{…}} 载荷里按字段边界抢救参数。
+// 返回工具名（来自 "name" 字段，可能混在 arguments 里）与参数 JSON。
+func salvageFields(payload string) (name, args string, ok bool) {
+	k := strings.Index(payload, `"arguments"`)
+	if k < 0 {
+		return "", "{}", false
+	}
+	seg := payload[k+len(`"arguments"`):]
+	if i := strings.Index(seg, "{"); i >= 0 {
+		seg = seg[i+1:]
+	} else {
+		return "", "{}", false
+	}
+	if j := strings.LastIndex(seg, "}"); j >= 0 {
+		seg = seg[:j]
+	}
+	seg = strings.TrimRight(seg, "\" \t\r\n")
+	if strings.TrimSpace(seg) == "" {
+		return "", "{}", false
+	}
+	params := map[string]any{}
+	// 首个字段："key":"value…
+	if head := headFieldRe.FindStringSubmatchIndex(seg); head != nil {
+		end := len(seg)
+		if locs := fieldBoundaryRe.FindAllStringSubmatchIndex(seg, -1); len(locs) > 0 {
+			end = locs[0][0]
+		}
+		setField(params, &name, seg[head[2]:head[3]], extractRawValue(seg[head[1]:end]))
+		// 后续字段：,"key":value…
+		if locs := fieldBoundaryRe.FindAllStringSubmatchIndex(seg, -1); len(locs) > 0 {
+			for idx, loc := range locs {
+				e := len(seg)
+				if idx+1 < len(locs) {
+					e = locs[idx+1][0]
+				}
+				setField(params, &name, seg[loc[2]:loc[3]], extractRawValue(seg[loc[1]:e]))
+			}
+		}
+	} else {
+		return "", "{}", false
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return name, "{}", true
+	}
+	return name, string(raw), true
+}
+
+// setField 写入一个字段；"name" 是工具名混进了 arguments，单独存放不进参数。
+func setField(params map[string]any, name *string, key string, val any) {
+	if key == "name" {
+		if s, isStr := val.(string); isStr {
+			*name = s
+			return
+		}
+	}
+	params[key] = val
+}
+
+// extractRawValue 抠字段值：先尝试按完整 JSON 值解析（数字/布尔/合法字符串），
+// 失败则按字符串处理——去掉首尾引号，值内部混乱的引号原样保留（Marshal 统一转义）。
+func extractRawValue(seg string) any {
+	s := strings.TrimSpace(seg)
+	var v any
+	if json.Unmarshal([]byte(s), &v) == nil && v != nil {
+		return v
+	}
+	s = strings.TrimSuffix(s, "\"")
+	if strings.HasPrefix(s, "\"") {
+		s = s[1:]
+	}
+	return s
+}
+
 // parseCallPayload 解析单个标记内的 JSON 载荷，返回工具名与 arguments 字符串。
 func parseCallPayload(payload string) (name, args string, ok bool) {
 	var m map[string]any
@@ -361,7 +580,21 @@ func parseCallPayload(payload string) (name, args string, ok bool) {
 		if json.Unmarshal([]byte(repairJSON(payload)), &m) != nil {
 			// 仍失败：正则兜底抠出 name，arguments 用括号配对
 			if nm := reName.FindStringSubmatch(payload); nm != nil {
-				return nm[1], salvageArgs(payload), true
+				if args := salvageArgs(payload); args != "{}" {
+					return nm[1], args, true
+				}
+				// 括号配对失效（引号混乱导致状态机失步）：按字段边界抢救
+				if n, a, ok2 := salvageFields(payload); ok2 {
+					if n == "" {
+						n = nm[1]
+					}
+					return n, a, true
+				}
+				return nm[1], "{}", true
+			}
+			// name 也没抠到：字段边界兜底仍可能同时救出 name 和参数
+			if n, a, ok2 := salvageFields(payload); ok2 && n != "" {
+				return n, a, true
 			}
 			return "", "", false
 		}
@@ -462,7 +695,31 @@ func parseTagCall(openTagText, payload string) (Call, bool) {
 			break
 		}
 	}
+	if args == "{}" { // 最后兜底：字段边界抢救
+		if _, a, ok2 := salvageFields(openTagText + payload); ok2 && a != "{}" {
+			args = a
+		}
+	}
 	return Call{Name: name, Args: args}, true
+}
+
+// stripInternalTokens 剥掉 DeepSeek 会话模板特殊标记（<｜User｜>/<｜end of
+// sentence｜> 等），夹着的正文保留。没有标记形状时零拷贝原样返回。
+func stripInternalTokens(text string) string {
+	if !strings.ContainsAny(text, "｜") && !strings.Contains(text, "<|") {
+		return text
+	}
+	return dsmlSpecialRe.ReplaceAllString(text, "")
+}
+
+// stripToolResultEcho 剥掉模型复述的 <tool_result> 块：完整块连内容剥掉
+//（那是幻觉出来的工具侧输出，不该出现在助手回复里），未闭合的只剥标记本身。
+func stripToolResultEcho(text string) string {
+	if !strings.Contains(text, "tool_result") {
+		return text
+	}
+	out := toolResultBlockRe.ReplaceAllString(text, "")
+	return toolResultTagRe.ReplaceAllString(out, "")
 }
 
 // ParseText 从模型输出里抽取全部工具调用标记——兼容多种形态：
@@ -473,8 +730,13 @@ func ParseText(text string) (content string, calls []Call) {
 	for _, w := range wrapperTokens {
 		text = strings.ReplaceAll(text, w, "")
 	}
+	// 会话模板标记与 tool_result 回声先剥（DeepSeek「继续」续写场景高发）
+	text = stripInternalTokens(text)
+	text = stripToolResultEcho(text)
+	// DSML 优先剥离（DeepSeek 网页模型的自带格式），再走通用 XML 风格
+	text, dsmlCalls := extractDSMLBlocks(text)
 	text, invCalls := extractInvokeBlocks(text)
-	calls = invCalls
+	calls = append(dsmlCalls, invCalls...)
 	var b strings.Builder
 	for {
 		loc := reOpen.FindStringIndex(text)
@@ -487,9 +749,15 @@ func ParseText(text string) (content string, calls []Call) {
 		rest := text[loc[1]:]
 		cl := reClose.FindStringIndex(rest)
 		if cl == nil {
-			// 未闭合标记：整体当正文保留，避免吞内容
-			b.WriteString(openTagText)
-			b.WriteString(rest)
+			// 未闭合标记：先尝试按调用抢救（模型截断/格式混杂时 JSON 仍可抠出；
+			// 抢救成功就整体消费，避免 <tool_call> 原文漏给客户端）。
+			if c, ok := parseTagCall(openTagText, rest); ok {
+				calls = append(calls, c)
+			} else {
+				// 彻底解析失败才当正文保留，避免吞内容
+				b.WriteString(openTagText)
+				b.WriteString(rest)
+			}
 			text = ""
 			break
 		}
@@ -573,6 +841,82 @@ func ApplyToResponse(raw []byte) []byte {
 		return raw
 	}
 	return out
+}
+
+// StripDSML 响应侧无条件噪音清理（不转 tool_calls）：客户端没声明工具时
+// 伪工具协议整体不启用，模型复述上一轮调用、自发吐出的 DSML 标记、会话
+// 模板特殊标记（<｜User｜> 等）、tool_result 回声都会原样漏给客户端——
+// 纯噪音，直接剥掉。OpenAI/Anthropic 两种形状都处理；
+// 没有噪音痕迹时零拷贝原样返回。
+func StripDSML(raw []byte) (out []byte, stripped bool) {
+	if !bytes.Contains(raw, []byte("DSML")) && !bytes.Contains(raw, []byte("dsml")) &&
+		!bytes.Contains(raw, []byte("｜")) && !bytes.Contains(raw, []byte("<|")) &&
+		!bytes.Contains(raw, []byte("tool_result")) {
+		return raw, false
+	}
+	var resp map[string]any
+	if json.Unmarshal(raw, &resp) != nil {
+		return raw, false
+	}
+	fix := func(s string) (string, bool) {
+		nt, _ := extractDSMLBlocks(s)
+		nt = stripInternalTokens(nt)
+		nt = stripToolResultEcho(nt)
+		nt = strings.TrimSpace(nt)
+		return nt, nt != s
+	}
+	// OpenAI 形状
+	if choices, _ := resp["choices"].([]any); len(choices) > 0 {
+		if ch, ok := choices[0].(map[string]any); ok {
+			if msg, ok := ch["message"].(map[string]any); ok {
+				if t, ok := msg["content"].(string); ok {
+					if nt, c := fix(t); c {
+						msg["content"] = nt
+						stripped = true
+					}
+				}
+				if r, ok := msg["reasoning_content"].(string); ok {
+					if nr, c := fix(r); c {
+						msg["reasoning_content"] = nr
+						stripped = true
+					}
+				}
+			}
+		}
+	}
+	// Anthropic 形状
+	if blocks, _ := resp["content"].([]any); len(blocks) > 0 {
+		for _, bv := range blocks {
+			b, ok := bv.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch t, _ := b["type"].(string); t {
+			case "text":
+				if s, ok := b["text"].(string); ok {
+					if ns, c := fix(s); c {
+						b["text"] = ns
+						stripped = true
+					}
+				}
+			case "thinking":
+				if s, ok := b["thinking"].(string); ok {
+					if ns, c := fix(s); c {
+						b["thinking"] = ns
+						stripped = true
+					}
+				}
+			}
+		}
+	}
+	if !stripped {
+		return raw, false
+	}
+	out, err := json.Marshal(resp)
+	if err != nil {
+		return raw, false
+	}
+	return out, true
 }
 
 // ApplyToAnthropicResponse 聚合响应改写（Anthropic 形状）：content 块里的

@@ -161,37 +161,39 @@ func (p *Provider) Checkin(ctx context.Context, acct *store.Account) (bool, stri
 
 // ── 模型 ──
 
-// seedModels 上游目录不可用时的兜底模型表（2026-10 实测目录）。
+// seedModels 上游目录不可用时的兜底模型表（2026-11 实测 /api/v2/models/ 全量目录）。
 var seedModels = []provider.ModelInfo{
-	{ID: "qwen3.8-max", Name: "Qwen3.8-Max"}, {ID: "qwen3.7-plus", Name: "Qwen3.7-Plus"}, {ID: "qwen3.8-omni-flash", Name: "Qwen3.8-Omni-Flash"},
+	{ID: "qwen4-max", Name: "Qwen4-Max"}, {ID: "qwen3.8-max", Name: "Qwen3.8-Max"}, {ID: "qwen3.7-plus", Name: "Qwen3.7-Plus"},
+	{ID: "qwen3.7-max", Name: "Qwen3.7-Max"}, {ID: "qwen3.8-omni-flash", Name: "Qwen3.8-Omni-Flash"}, {ID: "qwen3.5-omni-plus", Name: "Qwen3.5-Omni-Plus"},
 }
 
 func (p *Provider) SeedModels() []provider.ModelInfo { return seedModels }
 
-// Models 动态模型目录（/api/models，5 分钟缓存）。
+// Models 动态模型目录（/api/v2/models/，5 分钟缓存）。
+// 2026-11-21 实测：旧 /api/models 已废弃（只回 2 个模型），网页端真实目录
+// 是 /api/v2/models/（带尾斜杠），返回双层嵌套 {"success":true,"data":{"data":[...]}}。
 func (p *Provider) Models(ctx context.Context, acct *store.Account) ([]provider.ModelInfo, error) {
 	if cached, ok := modelsCache(); ok {
 		return cached, nil
 	}
 	var out struct {
-		Data []struct {
-			ID          string `json:"id"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
+		Success bool `json:"success"`
+		Data    struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"data"`
 		} `json:"data"`
 	}
-	status, err := httpx.DoJSON(ctx, "GET", p.base()+"/api/models", headers(acct, p.base(), ""), nil, &out, 30*time.Second)
+	status, err := httpx.DoJSON(ctx, "GET", p.base()+"/api/v2/models/", headers(acct, p.base(), ""), nil, &out, 30*time.Second)
 	if err != nil {
 		if status == 401 || status == 403 {
 			return nil, provider.Err(provider.KindAuth, status, "千问令牌无效或已过期")
 		}
 		return nil, provider.Err(provider.KindNetwork, 0, "%v", err)
 	}
-	if len(out.Data) == 0 {
-		return nil, provider.Err(provider.KindServer, 0, "模型目录为空")
-	}
-	var list []provider.ModelInfo
-	for _, m := range out.Data {
+	list := make([]provider.ModelInfo, 0, len(out.Data.Data))
+	for _, m := range out.Data.Data {
 		if m.ID == "" {
 			continue
 		}

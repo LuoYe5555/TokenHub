@@ -132,6 +132,10 @@ func (g *Gateway) mergeUsage(rec, bufRec *usageRecorder) {
 // flushAnthropicStream 把一份聚合好的 OpenAI chat.completion 拆成增量写给
 // AnthropicStreamSink（sink 内部负责转成 Anthropic message SSE）。
 func flushAnthropicStream(sink provider.Sink, raw []byte) {
+	if out, stripped := pseudotools.StripDSML(raw); stripped {
+		logx.Infof("gateway", "已剥离流式响应中的 DSML 泄漏标记")
+		raw = out
+	}
 	var resp struct {
 		Choices []struct {
 			Message struct {
@@ -238,6 +242,12 @@ func (g *Gateway) gateChatAnthropic(ctx context.Context, provName, model, rawMod
 // role+content/reasoning 一块、tool_calls 一块、finish 一块、[DONE] 收尾。
 // 与 OpenAIStreamSink 的增量形状兼容（客户端按 chunk 累积）。
 func flushOpenAIStream(sink provider.Sink, raw []byte) {
+	// DSML 泄漏无条件清理：客户端没带 tools 时伪工具协议不启用，
+	// 模型复述/自发的 DSML 标记会原样漏出（2026-11-21 线上实测）
+	if out, stripped := pseudotools.StripDSML(raw); stripped {
+		logx.Infof("gateway", "已剥离流式响应中的 DSML 泄漏标记")
+		raw = out
+	}
 	var resp struct {
 		ID      string `json:"id"`
 		Model   string `json:"model"`
