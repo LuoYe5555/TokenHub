@@ -211,6 +211,10 @@ func main() {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
 	logx.Infof("main", "面板 %s | API %s/v1 | 数据目录 %s", baseURL, baseURL, *dataDir)
 
+	// DeepSeek 令牌保活：隐藏浏览器常驻同步网页端令牌轮换（设置页可关）。
+	// 注意放在端口绑定成功之后——绑定失败的实例直接退出，不该再拉保活浏览器
+	web.StartDSKeepAlive(cfg, st)
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 

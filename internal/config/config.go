@@ -136,6 +136,11 @@ type Config struct {
 	// API 调用不会在网页版历史列表堆积记录；nil=开
 	CleanWebHistory *bool `json:"cleanWebHistory,omitempty"`
 
+	// DeepSeek 令牌保活：后台挂一个隐藏浏览器常驻 chat.deepseek.com，
+	// 定期把页面 localStorage 里的最新 userToken 同步进账号——网页前端
+	// 轮换令牌时自动跟平，基本不需要手动重新导入；nil=开
+	DsKeepAlive *bool `json:"dsKeepAlive,omitempty"`
+
 	ReqDump bool `json:"reqDump,omitempty"` // 诊断：把客户端原始请求快照落盘 data/reqdump（默认关）
 
 	// 破甲（提示词对抗研究）总开关：true=设置页里配置的破甲策略对所有提供商生效。
@@ -341,6 +346,9 @@ func (c *Config) OptNearDupOn() bool { return c.OptNearDup == nil || *c.OptNearD
 
 // CleanWebHistoryOn 网页无痕模式（千问/DeepSeek 对话后自动删除上游会话；缺省开）。
 func (c *Config) CleanWebHistoryOn() bool { return c.CleanWebHistory == nil || *c.CleanWebHistory }
+
+// DsKeepAliveOn DeepSeek 令牌保活（缺省开）。
+func (c *Config) DsKeepAliveOn() bool { return c.DsKeepAlive == nil || *c.DsKeepAlive }
 
 // PJCompactOn 破甲段重复折叠开关（缺省开）。
 func (c *Config) PJCompactOn() bool { return c.PJCompact == nil || *c.PJCompact }

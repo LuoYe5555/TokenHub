@@ -7,6 +7,8 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -56,35 +58,47 @@ func truncStr(s string, n int) string {
 
 // handleDSBrowserStart 拉起（或重启）导入浏览器窗口。
 func (p *Panel) handleDSBrowserStart(w http.ResponseWriter, r *http.Request) {
+	port, err := dsStartImportBrowser()
+	if err != nil {
+		// 保持旧响应形状：前端按 ok/status 分支提示
+		status := "debug-timeout"
+		if strings.Contains(err.Error(), "Edge/Chrome") {
+			status = "no-browser"
+		}
+		writeJSON(w, map[string]any{"ok": false, "status": status, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "port": port})
+}
+
+// dsStartImportBrowser 拉起（或重启）headed 导入浏览器窗口，返回调试端口。
+// 供面板「一键导入」与保活的「凭据失效自动弹窗」共用。
+func dsStartImportBrowser() (int, error) {
 	dsBr.mu.Lock()
 	defer dsBr.mu.Unlock()
-	// 关掉上一轮导入窗口，避免同配置目录的旧进程吞掉新调试端口
+	// 关掉上一轮导入/保活窗口，避免同配置目录的旧进程吞掉新调试端口
 	dsBrStopLocked()
 	exe := qwencdp.FindBrowser()
 	if exe == "" {
-		writeJSON(w, map[string]any{"ok": false, "status": "no-browser"})
-		return
+		return 0, errors.New("未找到可用的 Edge/Chrome 浏览器")
 	}
 	port, err := qwencdp.FreePort()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "取空闲端口失败: "+err.Error())
-		return
+		return 0, fmt.Errorf("取空闲端口失败: %w", err)
 	}
 	profile, _ := filepath.Abs(dsProfileDir)
 	cmd, err := qwencdp.Launch(exe, profile, port, dsSiteURL, false)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "启动浏览器失败: "+err.Error())
-		return
+		return 0, fmt.Errorf("启动浏览器失败: %w", err)
 	}
 	dsBr.port = port
 	if cmd.Process != nil {
 		dsBr.proc = cmd.Process
 	}
 	if !qwencdp.WaitDebug(port, 25*time.Second) {
-		writeJSON(w, map[string]any{"ok": false, "status": "debug-timeout"})
-		return
+		return 0, errors.New("浏览器调试接口启动超时")
 	}
-	writeJSON(w, map[string]any{"ok": true})
+	return port, nil
 }
 
 // handleDSBrowserPoll 轮询登录结果：localStorage 出现 userToken 即建号/更新。
@@ -119,24 +133,8 @@ func (p *Panel) handleDSBrowserPoll(w http.ResponseWriter, r *http.Request) {
 	}
 	// 真正抓到登录 token 才记一条（一次性）
 	logx.Infof("panel", "DeepSeek 导入 poll：已抓到登录 token（len=%d）", len(raw))
-	// 实测形状：{"value":"<token 字符串>","__version":"0"}；兼容旧的 {"value":{"token":"..."}} 包裹
-	var envStr struct {
-		Value string `json:"value"`
-	}
-	var envObj struct {
-		Value struct {
-			Token    string `json:"token"`
-			DeviceID string `json:"device_id"`
-		} `json:"value"`
-	}
-	token := ""
-	if json.Unmarshal([]byte(raw), &envStr) == nil && isPlausibleDSToken(envStr.Value) {
-		token = strings.TrimSpace(envStr.Value)
-	} else if json.Unmarshal([]byte(raw), &envObj) == nil && envObj.Value.Token != "" {
-		token = envObj.Value.Token
-	} else if isPlausibleDSToken(raw) {
-		token = strings.TrimSpace(raw) // 兜底：整个值就是裸 token
-	} else {
+	token := dsParseUserToken(raw)
+	if token == "" {
 		logx.Infof("panel", "DeepSeek 导入 poll：userToken 形状无法解析: %q", truncStr(raw, 120))
 		writeJSON(w, map[string]any{"ok": false, "status": "waiting"})
 		return
@@ -213,6 +211,34 @@ func dsBrStopLocked() {
 		dsBr.proc = nil
 	}
 	dsBr.port = 0
+}
+
+// dsParseUserToken 解析 localStorage userToken 的各种历史形状，返回纯 token。
+// 实测形状：{"value":"<token 字符串>","__version":"0"}；兼容旧的
+// {"value":{"token":"..."}} 包裹与裸 token；返回空串表示未登录或形状未知。
+func dsParseUserToken(raw string) string {
+	if strings.Contains(raw, `"value":null`) {
+		return "" // 登录态被清：网页端留下 null 包装
+	}
+	var envStr struct {
+		Value string `json:"value"`
+	}
+	var envObj struct {
+		Value struct {
+			Token    string `json:"token"`
+			DeviceID string `json:"device_id"`
+		} `json:"value"`
+	}
+	if json.Unmarshal([]byte(raw), &envStr) == nil && isPlausibleDSToken(envStr.Value) {
+		return strings.TrimSpace(envStr.Value)
+	}
+	if json.Unmarshal([]byte(raw), &envObj) == nil && envObj.Value.Token != "" {
+		return envObj.Value.Token
+	}
+	if isPlausibleDSToken(raw) {
+		return strings.TrimSpace(raw) // 兜底：整个值就是裸 token
+	}
+	return ""
 }
 
 // dsSetCookie 保存导入窗口抓的全套站点 cookie；空值不覆盖旧值。

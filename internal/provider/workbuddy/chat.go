@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -303,8 +304,15 @@ func guardText(s string) string {
 	return strings.ReplaceAll(s, fpAOld, fpANew)
 }
 
+var (
+	wbDumpMu       sync.Mutex
+	wbDumpLastLog  time.Time // 节流：面板日志 10 分钟最多一条完整路径
+	wbDumpSilenced int       // 被节流吞掉的条数
+)
+
 // dump11128 上游 11128 渠道校验拦截时，保存完整出站请求样本到日志目录，
-// 供指纹词表分析（社区 recipes：dump → 重放 → 逐变量定位）。
+// 供事后分析（实测为间歇性风控抖动，未写出字节时 Chat 循环会静默重试自愈）。
+// 样本每次都落盘，但面板日志节流 10 分钟一条并汇总被吞条数，避免刷屏。
 func dump11128(raw []byte) {
 	dir := logx.LogDir()
 	if dir == "" {
@@ -312,7 +320,19 @@ func dump11128(raw []byte) {
 	}
 	p := filepath.Join(dir, fmt.Sprintf("11128-dump-%d.json", time.Now().Unix()))
 	if os.WriteFile(p, raw, 0o600) == nil {
-		logx.Warnf("workbuddy", "11128 拦截：出站请求样本已保存 %s（用于指纹词表分析）", p)
+		wbDumpMu.Lock()
+		defer wbDumpMu.Unlock()
+		if time.Since(wbDumpLastLog) > 10*time.Minute {
+			if wbDumpSilenced > 0 {
+				logx.Warnf("workbuddy", "11128 拦截（此前 10 分钟另有 %d 次，均静默重试自愈）：样本已保存 %s", wbDumpSilenced, p)
+				wbDumpSilenced = 0
+			} else {
+				logx.Warnf("workbuddy", "11128 拦截（间歇性风控抖动，未写出字节时自动重试自愈）：样本已保存 %s", p)
+			}
+			wbDumpLastLog = time.Now()
+		} else {
+			wbDumpSilenced++
+		}
 	}
 }
 
@@ -387,9 +407,19 @@ func (p *Provider) Chat(ctx context.Context, acct *store.Account, openaiReq []by
 		}
 		err = parseChatSSE(resp.Stream, body, sink)
 		resp.Stream.Close()
+		// 流式中途（HTTP 200 + SSE 错误帧）的 11128：实测同样为间歇性拦截
+		// （同一 payload 事后重放全部通过），未写出任何字节时同样原地重试一次。
+		if errors.Is(err, errStream11128) && attempt == 1 {
+			time.Sleep(800 * time.Millisecond)
+			continue
+		}
 		return err
 	}
 }
+
+// errStream11128 流式响应中途收到 11128 错误帧且尚未向客户端写出任何字节——
+// 交给 Chat 循环原样重试一次（上游校验为间歇性触发，重发常可通过）。
+var errStream11128 = errors.New("workbuddy: 11128 channel check, retryable")
 
 // wbFriendlyError 解析国服错误信封，把易误判的业务码翻译成明确指引。
 func wbFriendlyError(status int, body []byte) error {
@@ -415,9 +445,9 @@ func wbFriendlyError(status int, body []byte) error {
 		return provider.Err(provider.KindClient, status, "上游要求流式请求（%s）", env.Msg)
 	case 11128:
 		return provider.Err(provider.KindClient, status,
-			"上游渠道校验拦截（11128，%s）：提示词命中非官方客户端指纹，与账号/token/请求头无关。"+
-				"TokenHub 已自动改写已知指纹并原地重试一次仍被拒；"+
-				"本次请求完整样本已存至日志目录（11128-dump-*.json），把它发给维护者即可定位并更新指纹词表", env.Msg)
+			"上游渠道校验拦截（11128，%s）：间歇性风控误伤（实测同一请求重放可通过），与账号/token/请求头无关。"+
+				"TokenHub 已原地重试一次仍被拒；"+
+				"本次请求完整样本已存至日志目录（11128-dump-*.json），稍后自然恢复或反馈维护者", env.Msg)
 	case 11140:
 		// 社区/同类网关（DSH workbuddy-gateway）共识：11140=账号级风控拦截（请求未达模型），
 		// 常见诱因：高频调用、异地/多设备登录、内容审核。重试会加重风控，等 2~4h 通常自解。
@@ -438,6 +468,7 @@ func parseChatSSE(r io.Reader, sentBody map[string]any, sink provider.Sink) erro
 	var finish string
 	var usage *provider.Usage
 	hasDelta := false
+	stream11128 := false // 流式中途收到 11128 且未写出任何字节 → 可重试
 
 	err := provider.ScanSSE(r, func(ev provider.SSEEvent) bool {
 		data := strings.TrimSpace(ev.Data)
@@ -487,7 +518,13 @@ func parseChatSSE(r io.Reader, sentBody map[string]any, sink provider.Sink) erro
 				if code == 11128 {
 					dump, _ := json.Marshal(sentBody)
 					dump11128(dump)
-					msg = "上游渠道校验拦截（11128）：提示词命中非官方客户端指纹，与账号/token 无关；TokenHub 已自动改写已知指纹并原地重试仍被拒，请求样本已存日志目录（11128-dump-*.json）供词表分析"
+					// 未写出任何字节（无 role/content delta）→ 可安全原地重试；
+					// 已写出 → 重试会重复输出，只能把错误透传给客户端
+					if !hasDelta && !firstRoleSent {
+						stream11128 = true
+						return false
+					}
+					msg = "上游渠道校验拦截（11128）：间歇性风控误伤，与账号/token 无关；请求样本已存日志目录（11128-dump-*.json）供分析"
 				}
 				sink.StreamError(code, msg)
 				return false
@@ -525,6 +562,9 @@ func parseChatSSE(r io.Reader, sentBody map[string]any, sink provider.Sink) erro
 	})
 	if err != nil {
 		return err
+	}
+	if stream11128 {
+		return errStream11128
 	}
 	reason := finish
 	if reason == "" {
